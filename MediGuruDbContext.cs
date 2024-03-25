@@ -58,5 +58,7 @@ public sealed class MediGuruDbContext : IdentityDbContext<User, UserRole, string
             table.ToTable(nameof(UserRole));
             table.Property(x => x.Id).ValueGeneratedOnAdd();
         });
+
+        modelBuilder.Entity<TaskExecutionHistory>().ToTable(nameof(TaskExecutionHistory));
     }
 }
