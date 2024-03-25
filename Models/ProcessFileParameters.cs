@@ -1,4 +1,4 @@
-namespace MediGuru.DataExtractionTool.DatabaseModels;
+namespace MediGuru.DataExtractionTool.Models;
 
 public sealed class ProcessFileParameters
 {

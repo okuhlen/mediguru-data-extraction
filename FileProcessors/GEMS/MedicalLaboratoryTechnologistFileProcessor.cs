@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using MediGuru.DataExtractionTool.DatabaseModels;
 using MediGuru.DataExtractionTool.Helpers;
+using MediGuru.DataExtractionTool.Models;
 using MediGuru.DataExtractionTool.Repositories;
 using Microsoft.EntityFrameworkCore;
 

@@ -4,6 +4,7 @@ using MediGuru.DataExtractionTool.Constants;
 using MediGuru.DataExtractionTool.DatabaseModels;
 using MediGuru.DataExtractionTool.FileProcessors;
 using MediGuru.DataExtractionTool.FileProcessors.GEMS;
+using MediGuru.DataExtractionTool.Models;
 using MediGuru.DataExtractionTool.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
