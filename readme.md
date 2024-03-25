@@ -19,7 +19,9 @@ If you would like a good idea as to how the downloaded files should be placed in
   Other files which you should download/create:
 - WoolTru files must be stored in the Files/WoolTru subdirectory.
 
-After adding all the neccessary files, dont forget to add these files to the project. Select all files and right click. Then, select properties. Set the "Copy to output directory" dropdown to "Copy if Newer". See the screenshot below as an example:
+After adding all the necessary files, dont forget to add these files to the project. Select all files and right click. Then, select properties. Set the "Copy to output directory" dropdown to "Copy if Newer". See the screenshot below as an example:
+
+![Example of GEMS tariff file properties](Images/receipt_1.png)
 
 If you find other healthcare providers who share some tariff rates data, feel free to modify the code, and open a pull request with the changes :-)
 
