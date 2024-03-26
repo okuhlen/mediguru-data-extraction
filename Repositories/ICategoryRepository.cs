@@ -9,10 +9,6 @@ namespace MediGuru.DataExtractionTool.Repositories
 
         Task<Category> FetchByName(string name);
 
-        Task<bool> Exists(string categoryName);
-
         Task<List<Category>> FetchAll();
-
-        Task<Category> FetchById(string id);
     }
 }

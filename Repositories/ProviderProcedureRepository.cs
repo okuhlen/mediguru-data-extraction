@@ -4,25 +4,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.Repositories;
 
-public sealed class ProviderProcedureRepository : IProviderProcedureRepository
+public sealed class ProviderProcedureRepository(MediGuruDbContext dbContext) : IProviderProcedureRepository
 {
-    private readonly MediGuruDbContext _dbContext;
-    public ProviderProcedureRepository(MediGuruDbContext dbContext) => _dbContext = dbContext;
-
-    public async Task<int> CountProceduresByProviderId(string providerId)
-    {
-        return await _dbContext.ProviderProcedures.CountAsync(x => x.ProviderId == providerId).ConfigureAwait(false);
-    }
-
     public async Task<IList<ProviderProcedure>> FetchAll(DateTime? startDate = null)
     {
         if (startDate.HasValue)
         {
-            return await _dbContext.ProviderProcedures.Where(x => x.DateAdded >= startDate.Value).ToListAsync()
+            return await dbContext.ProviderProcedures.Where(x => x.DateAdded >= startDate.Value).ToListAsync()
                 .ConfigureAwait(false);
         }
 
-        return await _dbContext.ProviderProcedures.ToListAsync().ConfigureAwait(false);
+        return await dbContext.ProviderProcedures.ToListAsync().ConfigureAwait(false);
     }
 
     public async Task InsertAsync(ProviderProcedure newOne, bool shouldSaveNow = true)
@@ -43,10 +35,10 @@ public sealed class ProviderProcedureRepository : IProviderProcedureRepository
             IsNonContracted = newOne.IsNonContracted,
         };
 
-        var addedEntity = await _dbContext.ProviderProcedures.AddAsync(dbProvider).ConfigureAwait(false);
+        var addedEntity = await dbContext.ProviderProcedures.AddAsync(dbProvider).ConfigureAwait(false);
         if (shouldSaveNow)
         {
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
         }
         newOne.ProviderProcedureId = addedEntity.Entity.ProviderProcedureId;
     }

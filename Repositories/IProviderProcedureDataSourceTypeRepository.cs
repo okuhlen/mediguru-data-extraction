@@ -7,6 +7,4 @@ public interface IProviderProcedureDataSourceTypeRepository
 {
     Task InsertAsync(ProviderProcedureDataSourceType source);
     Task<ProviderProcedureDataSourceType> FetchByNameAsync(string name);
-
-    Task<bool> ExistsById(string id);
 }

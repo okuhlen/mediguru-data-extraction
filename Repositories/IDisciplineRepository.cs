@@ -11,12 +11,7 @@ public interface IDisciplineRepository
 
     Task<Discipline> FetchByCodeAndSubCode(string code, string subCode);
 
-    Task<bool> Exists(string code);
-    Task<bool> Exists(string code, string subCode);
-
     Task<Discipline?> FetchByName(string name);
 
     Task<List<Discipline>> FetchAll();
-
-    Task<Discipline> FetchById(string id);
 }
