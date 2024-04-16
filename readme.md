@@ -4,6 +4,7 @@ The MediGuru data extraction tool is a C# console application which is used to e
 
 This readme provides a detailed explanation of the files contained in the project, and the configurations a developer might need to go through. Please read this document carefully before trying to run the console app as is. In short, you will be required to add some code of your own which handles storage of the extracted data.
 
+Before getting started, please ensure you have .NET 8.0 installed. To download and install .NET 8.0, please visit the [Microsoft .NET site](https://dotnet.microsoft.com/en-us/download). You may use any IDE of your liking, that supports .NET projects (I used JetBrains Rider). 
 ## Step 1: Download the Required Files
 Before getting started, there are a collection of files you will need to download and include with this app. The source files are not included in this version of the project, due to the lack of clarity surrounding the licensing under which the files are released. The healthcare providers do mention the files are for healthcare providers, but not explicitly state restrictions. As such, I can only provide links as to where the source files can be downloaded. To get started, please download the source files from these healthcare providers:
 
@@ -15,11 +16,11 @@ Before getting started, there are a collection of files you will need to downloa
 If you would like a good idea as to how the downloaded files should be placed in the solution, please have a look at the following C# class files:
 
 - `GEMSFileLocations.cs` - This file speaks to the expected locations of the GEMS excel spreadsheets. Place all the 2023 files in the GEMS folder. The 2024 files should be placed in the 2024 subdirectory in the GEMS folder.
-- `GEMSFileLocations.cs` - This file speaks to the base directory where all Momentum files are to be found. Please ensure these files are in xlsx format!
+- `BaseDirectories.cs` - This file speaks to the base directory where all Momentum files are to be found. Please ensure these files are in xlsx format!
   Other files which you should download/create:
 - WoolTru files must be stored in the Files/WoolTru subdirectory.
 
-After adding all the necessary files, dont forget to add these files to the project. Select all files and right click. Then, select properties. Set the "Copy to output directory" dropdown to "Copy if Newer". See the screenshot below as an example:
+After adding all the necessary files, do not forget to add these files to the project. Select all files and right click. Then, select properties. Set the "Copy to output directory" dropdown to "Copy if Newer". See the screenshot below as an example:
 
 ![Example of GEMS tariff file properties](Images/receipt_1.png)
 
@@ -36,7 +37,10 @@ If you would like a general sense of what tables will be created, please have a 
 - Category: This keeps track of all possible categories
 - Discipline: This keeps track of all doctors/discipline types
 - MedicalAidName: keeps track of all medical aid names
-- MedicalAid
+- MedicalAidSchemeProcedure: This file keeps track of all the known medical aid procedures linked to a medical aid provider. This table is relevant only for user submissions (a user can supply medical records for any known medical aid scheme provider).
+- Procedure: This table keeps track of all known procedures. During the initial run of the data extraction tool, all procedure information extracted from the spreadsheets and text files will be placed in this table.
+- Provider: This table keeps track of all official providers (i.e.: those who have official data points that can be extracted from official data sources). In the case of this project, this table would list WoolTru, GEMS and Momentum.
+- ProviderProcedure: This table keeps track of all procedures which have been linked to official providers (this is when the tool was able to extract pricing data points for a given procedure).
 
 # Explanation of the class files used to extract data from excel/text files
 
@@ -47,7 +51,7 @@ The `WoolTruFileProcessor.cs` is used to extract data from the WoolTru text file
 One more thing, you probably also want to have a look at the `ProcessFileParameters` class; this class is used to specify what file the respective processor should use, and how it should process the file.
 
 # How the extracted data is used
-NOTE: The data extraction task took a little over 1 hour to run - this could have been due to the fact I had a septate cloud server for development purposes. The execution time may differ, depending on your configuration.
+NOTE: The data extraction task took a little over 1 hour to run - this could have been due to the fact I had a separate cloud server for development purposes. The execution time may differ, depending on your configuration.
 
 Once the data extraction tool has been run successfully, all data points are stored in the Provider, ProviderProcedure, Procedure, Category and Discipline tables. Together, these tables maintain the following rules:
 
@@ -81,4 +85,4 @@ If you would like to show your support, please consider [buying me a coffee](htt
 
 # How to contribute
 
-If you would like to contribute to this tool, or have some bugs to report, or have questions, please open an issue, or pull request with your changes. Please leave the "Karen"/"Kevin" keyboard warrior engine elsewhere; such energy will not be entertained! You may also send me an email/message and I will try my best to respond. Miss me with the Karen/Kevin energy. 
+If you would like to contribute to this tool, or have some bugs to report, or have questions, please open an issue, or pull request with your changes. Please leave the Karen/Kevin keyboard warrior antics elsewhere; such energy will not be entertained! You may also send me an email/message and I will try my best to respond. Miss me with the Karen/Kevin energy. 
