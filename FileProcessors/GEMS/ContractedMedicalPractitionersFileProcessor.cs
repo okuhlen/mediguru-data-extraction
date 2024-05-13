@@ -7,40 +7,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors.GEMS;
 
-public sealed class ContractedMedicalPractitionersFileProcessor
+public sealed class ContractedMedicalPractitionersFileProcessor(
+    MediGuruDbContext dbContext,
+    IProviderProcedureDataSourceTypeRepository sourceTypeRepository,
+    ICategoryRepository categoryRepository,
+    IProviderRepository providerRepository,
+    IDisciplineRepository disciplineRepository,
+    IProcedureRepository procedureRepository,
+    IProviderProcedureRepository providerProcedureRepository)
 {
-    private readonly MediGuruDbContext _dbContext;
-    private readonly IProviderProcedureDataSourceTypeRepository _sourceTypeRepository;
-    private readonly ICategoryRepository _categoryRepository;
-    private readonly IProviderRepository _providerRepository;
-    private readonly IDisciplineRepository _disciplineRepository;
-    private readonly IProcedureRepository _procedureRepository;
-    private readonly IProviderProcedureRepository _providerProcedureRepository;
-    private readonly List<(string Code, string Name)> _disciplines;
-
-    public ContractedMedicalPractitionersFileProcessor(MediGuruDbContext dbContext,
-        IProviderProcedureDataSourceTypeRepository sourceTypeRepository, ICategoryRepository categoryRepository,
-        IProviderRepository providerRepository, IDisciplineRepository disciplineRepository,
-        IProcedureRepository procedureRepository, IProviderProcedureRepository providerProcedureRepository)
+    private readonly List<(string Code, string Name)> _disciplines = new()
     {
-        _dbContext = dbContext;
-        _sourceTypeRepository = sourceTypeRepository;
-        _categoryRepository = categoryRepository;
-        _providerRepository = providerRepository;
-        _disciplineRepository = disciplineRepository;
-        _procedureRepository = procedureRepository;
-        _providerProcedureRepository = providerProcedureRepository;
-        _disciplines = new List<(string Code, string Name)>
-        {
-            new("14", "General Medical Practice"),
-            new("16", "Obstetrics and Gynaecology"),
-            new("32", "Paediatricians"),
-        };
-    }
+        new("14", "General Medical Practice"),
+        new("16", "Obstetrics and Gynaecology"),
+        new("32", "Paediatricians"),
+    };
 
     public async Task ProcessAsync(ProcessFileParameters parameters)
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             Console.WriteLine($"Now Processing File: {parameters.FileLocation}");
@@ -50,12 +35,12 @@ public sealed class ContractedMedicalPractitionersFileProcessor
                 throw new Exception("File not present");
             }
 
-            using var transaction = await _dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
-            var dataSource = await _sourceTypeRepository.FetchByNameAsync("GEMS").ConfigureAwait(false);
+            using var transaction = await dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
+            var dataSource = await sourceTypeRepository.FetchByNameAsync("GEMS").ConfigureAwait(false);
             if (dataSource is null)
                 throw new Exception($"Missing data source name: GEMS");
 
-            var provider = await _providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
+            var provider = await providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
                 .ConfigureAwait(false);
             foreach (var (disciplineCode, disciplineName) in _disciplines)
             {
@@ -66,11 +51,15 @@ public sealed class ContractedMedicalPractitionersFileProcessor
                 var discipline = await GetDiscipline(disciplineCode, disciplineName).ConfigureAwait(false);
                 foreach (var row in sheet.Rows())
                 {
+                    if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                    {
+                        Console.WriteLine($"Row {row.RowNumber()} skipped owing to specifications");
+                        continue;
+                    }
                     if (row.RowNumber() < parameters.StartingRow)
                     {
                         continue;
                     }
-
                     if (parameters.EndingRow.HasValue && row.RowNumber() >= parameters.EndingRow)
                     {
                         Console.WriteLine($"End of column: {disciplineCode}: {disciplineName}");
@@ -85,8 +74,13 @@ public sealed class ContractedMedicalPractitionersFileProcessor
                     {
                         continue;
                     }
-
-                    var procedure = await _procedureRepository
+                    if (!int.TryParse(tariffCodeText, out _))
+                    {
+                        Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                        continue;
+                    }
+                    
+                    var procedure = await procedureRepository
                         .FetchByCodeAndCategoryId(tariffCodeText, category.CategoryId)
                         .ConfigureAwait(false);
                     if (procedure is null)
@@ -98,7 +92,7 @@ public sealed class ContractedMedicalPractitionersFileProcessor
                             CodeDescriptor = row.Cell("B").GetString().Trim(),
                             CreatedDate = DateTime.Now,
                         };
-                        await _procedureRepository.InsertAsync(procedure, false).ConfigureAwait(false);
+                        await procedureRepository.InsertAsync(procedure, false).ConfigureAwait(false);
                     }
 
                     var tariffPrice = FormattingHelpers.FormatProcedurePrice(row.Cell(priceColumn).GetString());
@@ -113,16 +107,15 @@ public sealed class ContractedMedicalPractitionersFileProcessor
                         Provider = provider,
                         YearValidFor = parameters.YearValidFor,
                         DateAdded = DateTime.Now,
-                        IsGovernmentBaselineRate = false,
                         AdditionalNotes = parameters.AdditionalNotes,
                         IsContracted = parameters.IsContracted == true,
                         IsNonContracted = parameters.IsNonContracted == true,
                     };
-                    await _providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
+                    await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
                 }
             }
 
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
             Console.WriteLine($"DONE PROCESSING FILE: {parameters.FileLocation}");
         }).ConfigureAwait(false);
@@ -149,10 +142,10 @@ public sealed class ContractedMedicalPractitionersFileProcessor
         {
             case "14":
             case "16":
-                var category = await _categoryRepository.FetchByName("Uncategorized").ConfigureAwait(false);
+                var category = await categoryRepository.FetchByName("Uncategorized").ConfigureAwait(false);
                 return category;
             case "32":
-                return await _categoryRepository.FetchByName("Paediatrician").ConfigureAwait(false);
+                return await categoryRepository.FetchByName("Paediatrician").ConfigureAwait(false);
             default:
                 throw new NotSupportedException($"The code provided is not supported: {code}");
         }
@@ -169,7 +162,7 @@ public sealed class ContractedMedicalPractitionersFileProcessor
                 DateAdded = DateTime.Now,
                 Description = disciplineName,
             };
-            await _disciplineRepository.InsertAsync(disciplineInternal, false).ConfigureAwait(false);
+            await disciplineRepository.InsertAsync(disciplineInternal, false).ConfigureAwait(false);
             return disciplineInternal;
         }
 
@@ -179,7 +172,7 @@ public sealed class ContractedMedicalPractitionersFileProcessor
             case "14":
             case "16":
             case "32":
-                discipline = await _disciplineRepository.FetchByCode(code).ConfigureAwait(false);
+                discipline = await disciplineRepository.FetchByCode(code).ConfigureAwait(false);
                 if (discipline is null)
                 {
                     return await InsertDiscipline(discipline).ConfigureAwait(false);

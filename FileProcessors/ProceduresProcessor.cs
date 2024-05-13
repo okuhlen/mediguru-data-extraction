@@ -5,36 +5,26 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors;
 
-internal sealed class ProceduresProcessor
+internal sealed class ProceduresProcessor(
+    MediGuruDbContext dbContext,
+    IProcedureRepository procedureRepository,
+    ICategoryRepository categoryRepository)
 {
-    private readonly MediGuruDbContext _dbContext;
-    private readonly IProcedureRepository _procedureRepository;
-    private readonly ICategoryRepository _categoryRepository;
-
-    public ProceduresProcessor(MediGuruDbContext dbContext, IProcedureRepository procedureRepository,
-        ICategoryRepository categoryRepository)
-    {
-        _dbContext = dbContext;
-        _procedureRepository = procedureRepository;
-        _categoryRepository = categoryRepository;
-    }
-
-    /* TODO: The plan here is to process all the WoolTru text files, to extract the codes and descriptors only.
-     * A given code may appear in one or more text files, and this is because each discipline (eg: opthamologist, surgeon) may have different base rates set by the medical aid scheme.
+    /* 
+     * A given code may appear in one or more text files, and this is because each discipline (eg: ophthalmologist, surgeon) may have different base rates set by the medical aid scheme.
      * The simplest would be to process the WoolTru text files; processing GEMS xlsx files need more thought.
      * WoolTru data files were manually copied from: https://wooltru-tariff.sctechnology.co.za/
-     * TODO: I couldnt find any relevant backend calls we could manipulate to get our data in json format :(
      * Important to note here that the price is not to be added! the pricing will be added when providers are set up
      * SEE: MomentumFileProcessor as an example.
      * */
     public async Task ProcessAsync()
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            var categoriesList = await _categoryRepository.FetchAll();
+            var categoriesList = await categoryRepository.FetchAll();
             var cats = categoriesList.ToList();
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            await using var transaction = await dbContext.Database.BeginTransactionAsync();
 
             var filesDirectory = $"{Directory.GetCurrentDirectory()}/Files/WoolTru/";
             foreach (var file in Directory.GetFiles(filesDirectory, "*.txt"))
@@ -48,7 +38,7 @@ internal sealed class ProceduresProcessor
                     {
                         procedure = new Procedure
                         {
-                            Code = streamReader.ReadLine(),
+                            Code = streamReader.ReadLine()!.Trim(),
                             CreatedDate = DateTime.Now,
                         };
                         var category = FetchByFileName(cats, Path.GetFileName(file));
@@ -67,7 +57,7 @@ internal sealed class ProceduresProcessor
 
                     if (resetCount == 2)
                     {
-                        await _procedureRepository.InsertAsync(procedure, false);
+                        await procedureRepository.InsertAsync(procedure, false);
                         procedure = null;
                         resetCount = 0;
                         //think this might be needed to move the cursor to the next line
@@ -78,11 +68,11 @@ internal sealed class ProceduresProcessor
 
                 if (procedure != null)
                 {
-                    await _procedureRepository.InsertAsync(procedure, false);
+                    await procedureRepository.InsertAsync(procedure, false);
                 }
             }
 
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
         }).ConfigureAwait(false);
     }

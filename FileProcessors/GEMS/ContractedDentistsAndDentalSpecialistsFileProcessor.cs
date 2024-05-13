@@ -67,6 +67,10 @@ public sealed class ContractedDentistsAndDentalSpecialistsFileProcessor(
                     {
                         continue;
                     }
+                    if (row.Cell("A").Style.Fill.BackgroundColor.HasValue)
+                    {
+                        continue;
+                    }
 
                     if (parameters.EndingRow.HasValue && row.RowNumber() >= parameters.EndingRow)
                     {
@@ -80,6 +84,12 @@ public sealed class ContractedDentistsAndDentalSpecialistsFileProcessor(
                     var tariffCodeText = row.Cell("A").GetString().Trim();
                     if (string.IsNullOrEmpty(tariffCodeText) || string.IsNullOrWhiteSpace(tariffCodeText))
                     {
+                        continue;
+                    }
+                    int tariffCode = default;
+                    if (!int.TryParse(tariffCodeText, out _))
+                    {
+                        Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
                         continue;
                     }
 
@@ -110,7 +120,6 @@ public sealed class ContractedDentistsAndDentalSpecialistsFileProcessor(
                         Provider = provider,
                         YearValidFor = parameters.YearValidFor,
                         DateAdded = DateTime.Now,
-                        IsGovernmentBaselineRate = false,
                         AdditionalNotes = parameters.AdditionalNotes,
                         IsContracted = parameters.IsContracted == true,
                         IsNonContracted = parameters.IsNonContracted == true,

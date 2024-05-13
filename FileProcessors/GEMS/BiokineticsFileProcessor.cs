@@ -7,37 +7,20 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors.GEMS;
 
-public sealed class BiokineticsFileProcessor
+public sealed class BiokineticsFileProcessor(
+    MediGuruDbContext dbContext,
+    IProviderProcedureDataSourceTypeRepository sourceTypeRepository,
+    ICategoryRepository categoryRepository,
+    IProviderRepository providerRepository,
+    IDisciplineRepository disciplineRepository,
+    IProcedureRepository procedureRepository,
+    IProviderProcedureRepository providerProcedureRepository)
 {
-    private readonly MediGuruDbContext _dbContext;
-    private readonly IProviderProcedureDataSourceTypeRepository _sourceTypeRepository;
-    private readonly ICategoryRepository _categoryRepository;
-    private readonly IProviderRepository _providerRepository;
-    private readonly IDisciplineRepository _disciplineRepository;
-    private readonly IProcedureRepository _procedureRepository;
     private const string DisciplineCode = "91";
-    private readonly IProviderProcedureRepository _providerProcedureRepository;
-
-    public BiokineticsFileProcessor(MediGuruDbContext dbContext,
-        IProviderProcedureDataSourceTypeRepository sourceTypeRepository,
-        ICategoryRepository categoryRepository,
-        IProviderRepository providerRepository,
-        IDisciplineRepository disciplineRepository,
-        IProcedureRepository procedureRepository,
-        IProviderProcedureRepository providerProcedureRepository)
-    {
-        _dbContext = dbContext;
-        _sourceTypeRepository = sourceTypeRepository;
-        _categoryRepository = categoryRepository;
-        _providerRepository = providerRepository;
-        _disciplineRepository = disciplineRepository;
-        _procedureRepository = procedureRepository;
-        _providerProcedureRepository = providerProcedureRepository;
-    }
 
     public async Task ProcessAsync(ProcessFileParameters parameters)
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             Console.WriteLine($"Now Processing File: {parameters.FileLocation}");
@@ -48,15 +31,15 @@ public sealed class BiokineticsFileProcessor
                 throw new Exception("File not present");
             }
 
-            using var transaction = await _dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
-            var dataSource = await _sourceTypeRepository.FetchByNameAsync("GEMS").ConfigureAwait(false);
+            using var transaction = await dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
+            var dataSource = await sourceTypeRepository.FetchByNameAsync("GEMS").ConfigureAwait(false);
             if (dataSource is null)
                 throw new Exception($"Missing data source name: GEMS");
 
-            var category = await _categoryRepository.FetchByName(parameters.CategoryName).ConfigureAwait(false);
-            var provider = await _providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
+            var category = await categoryRepository.FetchByName(parameters.CategoryName).ConfigureAwait(false);
+            var provider = await providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
                 .ConfigureAwait(false);
-            var discipline = await _disciplineRepository.FetchByCode(DisciplineCode).ConfigureAwait(false);
+            var discipline = await disciplineRepository.FetchByCode(DisciplineCode).ConfigureAwait(false);
             if (discipline is null)
             {
                 discipline = new Discipline
@@ -66,7 +49,7 @@ public sealed class BiokineticsFileProcessor
                     DateAdded = DateTime.Now,
                     SubCode = "0",
                 };
-                await _disciplineRepository.InsertAsync(discipline, false).ConfigureAwait(false);
+                await disciplineRepository.InsertAsync(discipline, false).ConfigureAwait(false);
             }
 
             if (category == null)
@@ -76,13 +59,23 @@ public sealed class BiokineticsFileProcessor
                     Description = parameters.CategoryName,
                     DateAdded = DateTime.Now
                 };
-                await _categoryRepository.InsertAsync(category, false).ConfigureAwait(false);
+                await categoryRepository.InsertAsync(category, false).ConfigureAwait(false);
             }
 
             var sheet = document.Worksheets.First();
             foreach (var row in sheet.Rows())
             {
+                if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                {
+                    Console.WriteLine($"Row {row.RowNumber()} has been skipped as per specifications");
+                    continue;
+                }
+                
                 if (row.RowNumber() < parameters.StartingRow)
+                {
+                    continue;
+                }
+                if (row.Cell("A").Style.Fill.BackgroundColor.HasValue)
                 {
                     continue;
                 }
@@ -95,8 +88,14 @@ public sealed class BiokineticsFileProcessor
                 {
                     continue;
                 }
+                
+                if (!int.TryParse(tariffCodeText, out _))
+                {
+                    Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                    continue;
+                }
 
-                var procedure = await _procedureRepository.FetchByCodeAndCategoryId(tariffCodeText, category.CategoryId)
+                var procedure = await procedureRepository.FetchByCodeAndCategoryId(tariffCodeText, category.CategoryId)
                     .ConfigureAwait(false);
                 if (procedure is null)
                 {
@@ -107,7 +106,7 @@ public sealed class BiokineticsFileProcessor
                         CodeDescriptor = row.Cell("B").GetString().Trim(),
                         CreatedDate = DateTime.Now,
                     };
-                    await _procedureRepository.InsertAsync(procedure, false).ConfigureAwait(false);
+                    await procedureRepository.InsertAsync(procedure, false).ConfigureAwait(false);
                 }
 
                 var tariffPrice = FormattingHelpers.FormatProcedurePrice(row.Cell("C").GetString());
@@ -122,15 +121,14 @@ public sealed class BiokineticsFileProcessor
                     Provider = provider,
                     YearValidFor = parameters.YearValidFor,
                     DateAdded = DateTime.Now,
-                    IsGovernmentBaselineRate = false,
                     AdditionalNotes = parameters.AdditionalNotes,
                     IsContracted = parameters.IsContracted == true,
                     IsNonContracted = parameters.IsNonContracted == true,
                 };
-                await _providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
+                await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
             }
 
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
             Console.WriteLine($"DONE PROCESSING FILE: {parameters.FileLocation}");
         }).ConfigureAwait(false);

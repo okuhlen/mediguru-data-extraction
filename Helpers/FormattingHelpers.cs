@@ -4,6 +4,18 @@ namespace MediGuru.DataExtractionTool.Helpers;
 
 public static class FormattingHelpers
 {
+    public static double? GetFormattedWoolTruPrice(string priceString)
+    {
+        CultureInfo cultureInfo = new CultureInfo("en-ZA");
+        string cleanPriceString = priceString.Replace("R", "").Trim();
+        cleanPriceString = cleanPriceString.Replace(" ", "");
+        cleanPriceString = cleanPriceString.Replace(",", cultureInfo.NumberFormat.CurrencyDecimalSeparator);
+        
+        // Parse the cleaned price string into a double value
+        double price = double.Parse(cleanPriceString, NumberStyles.Currency, cultureInfo);
+        
+        return price;
+    }
     //code taken from: https://stackoverflow.com/questions/1354924/how-do-i-parse-a-string-with-a-decimal-point-to-a-double 
     public static double FormatProcedurePrice(string price)
     {

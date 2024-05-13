@@ -6,11 +6,12 @@ This readme provides a detailed explanation of the files contained in the projec
 
 Before getting started, please ensure you have .NET 8.0 installed. To download and install .NET 8.0, please visit the [Microsoft .NET site](https://dotnet.microsoft.com/en-us/download). You may use any IDE of your liking, that supports .NET projects (I used JetBrains Rider). 
 ## Step 1: Download the Required Files
-Before getting started, there are a collection of files you will need to download and include with this app. The source files are not included in this version of the project, due to the lack of clarity surrounding the licensing under which the files are released. The healthcare providers do mention the files are for healthcare providers, but not explicitly state restrictions. As such, I can only provide links as to where the source files can be downloaded. To get started, please download the source files from these healthcare providers:
+Before getting started, there are a collection of files you will need to download and include with this app. The source files are not included in this version of the project, due to the lack of clarity surrounding the licensing under which the files are released. The healthcare providers do mention the files are for healthcare providers, but do not explicitly state any restrictions. As such, I can only provide links as to where the source files can be downloaded. To get started, please download the source files from these healthcare providers:
 
 - Government Employee Medical Scheme (GEMS): [2024 Tariffs](https://www.gems.gov.za/Healthcare-Providers/Tariff-Files/2024-Tariff-Files?year=2024), and [2023 Tariffs](https://www.gems.gov.za/Healthcare-Providers/Tariff-Files/2023-Tariff-Files?year=2023).
 - Momentum Health: [Tariff Files](https://provider.momentum.co.za/default.aspx?wv0/VQt%20352aqBYetE7mOzP25ni40mElMQCBtHeLFrhqZJoAkQmjjgI0R8l2eUTE3fR8oeIiUZc3QGgejEHXYA==)
 - WoolTru Healthcare Fund: [WoolTru Healthcare Tariff Lookup Tool](https://www.wooltruhealthcarefund.co.za/benefits/fund-tariff--whft--lookup)
+- CAMAF: [CAMAF Rates 2024](https://camaf.co.za/cbt-rates-2024/)
 - List of Disciplines - create an excel document (xlsx) file, with all disciplines listed here: [BI Solutions](https://www.bisolutions.co.za/reports/disciplines.php)
 
 If you would like a good idea as to how the downloaded files should be placed in the solution, please have a look at the following C# class files:

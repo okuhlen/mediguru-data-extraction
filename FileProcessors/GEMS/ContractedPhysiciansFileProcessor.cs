@@ -7,44 +7,28 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors.GEMS;
 
-public sealed class ContractedPhysiciansFileProcessor
+public sealed class ContractedPhysiciansFileProcessor(
+    MediGuruDbContext dbContext,
+    IProviderProcedureDataSourceTypeRepository sourceTypeRepository,
+    ICategoryRepository categoryRepository,
+    IProviderRepository providerRepository,
+    IDisciplineRepository disciplineRepository,
+    IProcedureRepository procedureRepository,
+    IProviderProcedureRepository providerProcedureRepository)
 {
-    private readonly List<(string DisciplineCode, String DisciplineName)> _disciplines;
-    private readonly MediGuruDbContext _dbContext;
-    private readonly IProviderProcedureDataSourceTypeRepository _sourceTypeRepository;
-    private readonly ICategoryRepository _categoryRepository;
-    private readonly IProviderRepository _providerRepository;
-    private readonly IDisciplineRepository _disciplineRepository;
-    private readonly IProcedureRepository _procedureRepository;
-    private readonly IProviderProcedureRepository _providerProcedureRepository;
-
-    public ContractedPhysiciansFileProcessor(MediGuruDbContext dbContext,
-        IProviderProcedureDataSourceTypeRepository sourceTypeRepository,
-        ICategoryRepository categoryRepository, IProviderRepository providerRepository,
-        IDisciplineRepository disciplineRepository, IProcedureRepository procedureRepository,
-        IProviderProcedureRepository providerProcedureRepository)
+    private readonly List<(string DisciplineCode, String DisciplineName)> _disciplines = new()
     {
-        _dbContext = dbContext;
-        _sourceTypeRepository = sourceTypeRepository;
-        _categoryRepository = categoryRepository;
-        _providerRepository = providerRepository;
-        _disciplineRepository = disciplineRepository;
-        _procedureRepository = procedureRepository;
-        _providerProcedureRepository = providerProcedureRepository;
-        _disciplines = new()
-        {
-            new("17", "Pulmonology"),
-            new("18", "Medicine (Specialist Physician)"),
-            new("19", "Gastroenterology"),
-            new("20", "Neurology"),
-            new("21", "Cardiology"),
-            new("31", "Rheumatology"),
-        };
-    }
+        new("17", "Pulmonology"),
+        new("18", "Medicine (Specialist Physician)"),
+        new("19", "Gastroenterology"),
+        new("20", "Neurology"),
+        new("21", "Cardiology"),
+        new("31", "Rheumatology"),
+    };
 
     public async Task ProcessAsync(ProcessFileParameters parameters)
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             Console.WriteLine($"Now Processing File: {parameters.FileLocation}");
@@ -53,21 +37,21 @@ public sealed class ContractedPhysiciansFileProcessor
             {
                 throw new Exception("File not present");
             }
-            var dataSource = await _sourceTypeRepository.FetchByNameAsync("GEMS").ConfigureAwait(false);
+            var dataSource = await sourceTypeRepository.FetchByNameAsync("GEMS").ConfigureAwait(false);
             if (dataSource is null)
                 throw new Exception($"Missing data source name: GEMS");
 
-            var provider = await _providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
+            var provider = await providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
                 .ConfigureAwait(false);
 
-            var proceduresList = await _procedureRepository.FetchAll().ConfigureAwait(false);
-            using var transaction = await _dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
+            var proceduresList = await procedureRepository.FetchAll().ConfigureAwait(false);
+            using var transaction = await dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
             foreach (var (disciplineCode, disciplineName) in _disciplines)
             {
                 var category = await GetCategory(disciplineCode).ConfigureAwait(false);
                 Console.WriteLine($"Now processing column: {disciplineCode}: {disciplineName}");
                 var sheet = document.Worksheets.First();
-                var discipline = await _disciplineRepository.FetchByCode(disciplineCode).ConfigureAwait(false);
+                var discipline = await disciplineRepository.FetchByCode(disciplineCode).ConfigureAwait(false);
                 if (discipline is null)
                 {
                     discipline = new Discipline
@@ -77,11 +61,17 @@ public sealed class ContractedPhysiciansFileProcessor
                         DateAdded = DateTime.Now,
                         SubCode = "0"
                     };
-                    await _disciplineRepository.InsertAsync(discipline, shouldSaveNow: false).ConfigureAwait(false);
+                    await disciplineRepository.InsertAsync(discipline, shouldSaveNow: false).ConfigureAwait(false);
                 }
 
                 foreach (var row in sheet.Rows())
                 {
+                    if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                    {
+                        Console.WriteLine($"Row {row.RowNumber()} is skipped owing to specifications");
+                        continue;
+                    }
+                    
                     if (row.RowNumber() < parameters.StartingRow)
                     {
                         continue;
@@ -101,10 +91,15 @@ public sealed class ContractedPhysiciansFileProcessor
                     {
                         continue;
                     }
+                    if (!int.TryParse(tariffCodeText, out _))
+                    {
+                        Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                        continue;
+                    }
 
                     var procedure =
                         proceduresList.FirstOrDefault(x =>
-                            string.Equals(x.Code, tariffCodeText, StringComparison.OrdinalIgnoreCase) &&
+                            x.Code == tariffCodeText &&
                             string.Equals(x.CategoryId, category.CategoryId, StringComparison.OrdinalIgnoreCase));
                     if (procedure is null)
                     {
@@ -115,7 +110,7 @@ public sealed class ContractedPhysiciansFileProcessor
                             CodeDescriptor = row.Cell("B").GetString().Trim(),
                             CreatedDate = DateTime.Now,
                         };
-                        await _procedureRepository.InsertAsync(procedure, false).ConfigureAwait(false);
+                        await procedureRepository.InsertAsync(procedure, false).ConfigureAwait(false);
                         proceduresList.Add(procedure);
                     }
 
@@ -131,16 +126,15 @@ public sealed class ContractedPhysiciansFileProcessor
                         Provider = provider,
                         YearValidFor = parameters.YearValidFor,
                         DateAdded = DateTime.Now,
-                        IsGovernmentBaselineRate = false,
                         IsNonContracted = parameters.IsNonContracted == true,
                         AdditionalNotes = parameters.AdditionalNotes,
                         IsContracted = parameters.IsContracted == true,
                     };
-                    await _providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
+                    await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
                 }
             }
 
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
             Console.WriteLine($"DONE PROCESSING FILE: {parameters.FileLocation}");
         }).ConfigureAwait(false);
@@ -151,7 +145,7 @@ public sealed class ContractedPhysiciansFileProcessor
         switch (code)
         {
             case "17":
-                var pulmonologyCat = await _categoryRepository.FetchByName("Pulmonology").ConfigureAwait(false);
+                var pulmonologyCat = await categoryRepository.FetchByName("Pulmonology").ConfigureAwait(false);
                 if (pulmonologyCat is null)
                 {
                     pulmonologyCat = new Category
@@ -159,12 +153,12 @@ public sealed class ContractedPhysiciansFileProcessor
                         DateAdded = DateTime.Now,
                         Description = "Pulmonology",
                     };
-                    await _categoryRepository.InsertAsync(pulmonologyCat).ConfigureAwait(false);
+                    await categoryRepository.InsertAsync(pulmonologyCat).ConfigureAwait(false);
                 }
 
                 return pulmonologyCat;
             case "18":
-                var medicineSpecialist = await _categoryRepository.FetchByName("Medicine (Specialist Physician)")
+                var medicineSpecialist = await categoryRepository.FetchByName("Medicine (Specialist Physician)")
                     .ConfigureAwait(false);
                 if (medicineSpecialist is null)
                 {
@@ -173,12 +167,12 @@ public sealed class ContractedPhysiciansFileProcessor
                         DateAdded = DateTime.Now,
                         Description = "Medicine (Specialist Physician)",
                     };
-                    await _categoryRepository.InsertAsync(medicineSpecialist).ConfigureAwait(false);
+                    await categoryRepository.InsertAsync(medicineSpecialist).ConfigureAwait(false);
                 }
 
                 return medicineSpecialist;
             case "19":
-                var specialistCat = await _categoryRepository.FetchByName("Gastroenterology").ConfigureAwait(false);
+                var specialistCat = await categoryRepository.FetchByName("Gastroenterology").ConfigureAwait(false);
                 if (specialistCat is null)
                 {
                     specialistCat = new Category
@@ -186,12 +180,12 @@ public sealed class ContractedPhysiciansFileProcessor
                         Description = "Gastroenterology",
                         DateAdded = DateTime.Now
                     };
-                    await _categoryRepository.InsertAsync(specialistCat).ConfigureAwait(false);
+                    await categoryRepository.InsertAsync(specialistCat).ConfigureAwait(false);
                 }
 
                 return specialistCat;
             case "20":
-                var neurologyCat = await _categoryRepository.FetchByName("Neurology").ConfigureAwait(false);
+                var neurologyCat = await categoryRepository.FetchByName("Neurology").ConfigureAwait(false);
                 if (neurologyCat is null)
                 {
                     neurologyCat = new Category
@@ -200,12 +194,12 @@ public sealed class ContractedPhysiciansFileProcessor
                         DateAdded = DateTime.Now
                     };
 
-                    await _categoryRepository.InsertAsync(neurologyCat).ConfigureAwait(false);
+                    await categoryRepository.InsertAsync(neurologyCat).ConfigureAwait(false);
                 }
 
                 return neurologyCat;
             case "21":
-                var cardiologyCat = await _categoryRepository.FetchByName("Cardiology").ConfigureAwait(false);
+                var cardiologyCat = await categoryRepository.FetchByName("Cardiology").ConfigureAwait(false);
                 if (cardiologyCat is null)
                 {
                     cardiologyCat = new Category
@@ -213,12 +207,12 @@ public sealed class ContractedPhysiciansFileProcessor
                         Description = "Cardiology",
                         DateAdded = DateTime.Now
                     };
-                    await _categoryRepository.InsertAsync(cardiologyCat).ConfigureAwait(false);
+                    await categoryRepository.InsertAsync(cardiologyCat).ConfigureAwait(false);
                 }
 
                 return cardiologyCat;
             case "31":
-                var rheumaCat = await _categoryRepository.FetchByName("Rheumatology").ConfigureAwait(false);
+                var rheumaCat = await categoryRepository.FetchByName("Rheumatology").ConfigureAwait(false);
                 if (rheumaCat is null)
                 {
                     rheumaCat = new Category
@@ -226,7 +220,7 @@ public sealed class ContractedPhysiciansFileProcessor
                         Description = "Rheumatology",
                         DateAdded = DateTime.Now
                     };
-                    await _categoryRepository.InsertAsync(rheumaCat).ConfigureAwait(false);
+                    await categoryRepository.InsertAsync(rheumaCat).ConfigureAwait(false);
                 }
 
                 return rheumaCat;

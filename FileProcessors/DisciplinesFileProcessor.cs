@@ -1,29 +1,19 @@
 ﻿using ClosedXML.Excel;
 using MediGuru.DataExtractionTool.DatabaseModels;
-using MediGuru.DataExtractionTool.Models;
 using MediGuru.DataExtractionTool.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors;
 
 //disciplines taken from: https://www.bisolutions.co.za/reports/disciplines.php
-internal class DisciplinesFileProcessor
+internal class DisciplinesFileProcessor(IDisciplineRepository disciplineRepository, MediGuruDbContext dbContext)
 {
-    private readonly MediGuruDbContext _dbContext;
-    private readonly IDisciplineRepository _disciplineRepository;
-
-    public DisciplinesFileProcessor(IDisciplineRepository disciplineRepository, MediGuruDbContext dbContext)
-    {
-        _disciplineRepository = disciplineRepository;
-        _dbContext = dbContext;
-    }
-
     public async Task ProcessAsync()
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            using var transaction = await _dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
+            using var transaction = await dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
 
             var fileDirectory = $"{Directory.GetCurrentDirectory()}/Files/Disciplines";
             foreach (var file in Directory.GetFiles(fileDirectory, "*.xlsx"))
@@ -44,11 +34,11 @@ internal class DisciplinesFileProcessor
                         DateAdded = DateTime.Now
                     };
 
-                    await _disciplineRepository.InsertAsync(discipline, false).ConfigureAwait(false);
+                    await disciplineRepository.InsertAsync(discipline, false).ConfigureAwait(false);
                 }
             }
 
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
         }).ConfigureAwait(false);
         

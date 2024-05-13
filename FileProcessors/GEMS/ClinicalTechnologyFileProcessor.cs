@@ -71,6 +71,10 @@ public sealed class ClinicalTechnologyFileProcessor(
                 {
                     continue;
                 }
+                if (row.Cell("A").Style.Fill.BackgroundColor.HasValue)
+                {
+                    continue;
+                }
 
                 if (row.Cell("A").IsEmpty() || row.Cell("C").IsEmpty())
                     continue;
@@ -81,6 +85,11 @@ public sealed class ClinicalTechnologyFileProcessor(
                     continue;
                 }
 
+                if (!int.TryParse(tariffCodeText, out _))
+                {
+                    Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                    continue;
+                }
                 var procedure = await procedureRepository
                     .FetchByCodeAndCategoryId(tariffCodeText, category.CategoryId).ConfigureAwait(false);
                 if (procedure is null)
@@ -107,7 +116,6 @@ public sealed class ClinicalTechnologyFileProcessor(
                     Provider = provider,
                     YearValidFor = parameters.YearValidFor,
                     DateAdded = DateTime.Now,
-                    IsGovernmentBaselineRate = false,
                     AdditionalNotes = parameters.AdditionalNotes,
                 };
                 await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);

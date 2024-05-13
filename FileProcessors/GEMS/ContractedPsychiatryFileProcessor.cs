@@ -65,6 +65,12 @@ public class ContractedPsychiatryFileProcessor(
             var sheet = document.Worksheets.First();
             foreach (var row in sheet.Rows())
             {
+                if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                {
+                    Console.WriteLine($"Row {row.RowNumber()} skipped owing to specifications");
+                    continue;
+                }
+                
                 if (row.RowNumber() < parameters.StartingRow)
                 {
                     continue;
@@ -76,6 +82,12 @@ public class ContractedPsychiatryFileProcessor(
                 var tariffCodeText = row.Cell("A").GetString().Trim();
                 if (string.IsNullOrEmpty(tariffCodeText) || string.IsNullOrWhiteSpace(tariffCodeText))
                 {
+                    continue;
+                }
+                int tariffCode = default;
+                if (!int.TryParse(tariffCodeText, out tariffCode))
+                {
+                    Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
                     continue;
                 }
 
@@ -105,7 +117,6 @@ public class ContractedPsychiatryFileProcessor(
                     Provider = provider,
                     YearValidFor = parameters.YearValidFor,
                     DateAdded = DateTime.Now,
-                    IsGovernmentBaselineRate = false,
                     IsContracted = parameters.IsContracted == true,
                     IsNonContracted = parameters.IsNonContracted == true,
                     AdditionalNotes = parameters.AdditionalNotes,

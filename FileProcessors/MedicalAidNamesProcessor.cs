@@ -4,23 +4,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors;
 
-public sealed class MedicalAidNamesProcessor
+public sealed class MedicalAidNamesProcessor(
+    IMedicalAidNameRepository medicalAidNameRepository,
+    MediGuruDbContext dbContext)
 {
-    private readonly IMedicalAidNameRepository _medicalAidNameRepository;
-    private readonly MediGuruDbContext _dbContext;
-
-    public MedicalAidNamesProcessor(IMedicalAidNameRepository medicalAidNameRepository, MediGuruDbContext dbContext)
-    {
-        _medicalAidNameRepository = medicalAidNameRepository;
-        _dbContext = dbContext;
-    }
-
     public async Task ProcessAsync()
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            using var transaction = await _dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
+            using var transaction = await dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
 
             var medicalAidNames = new List<string>();
 
@@ -38,7 +31,7 @@ public sealed class MedicalAidNamesProcessor
                 medicalAidNames.Add(row.Cell("A").GetText());
             }
 
-            await _medicalAidNameRepository.InsertBulk(medicalAidNames).ConfigureAwait(false);
+            await medicalAidNameRepository.InsertBulk(medicalAidNames).ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
         }).ConfigureAwait(false);
     }

@@ -65,7 +65,17 @@ public class MedicalLaboratoryTechnologistFileProcessor(
             var sheet = document.Worksheets.First();
             foreach (var row in sheet.Rows())
             {
+                if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                {
+                    Console.WriteLine($"Row {row.RowNumber()} has been skipped, as per specifications");
+                    continue;
+                }
+                
                 if (row.RowNumber() < parameters.StartingRow)
+                {
+                    continue;
+                }
+                if (row.Cell("A").Style.Fill.BackgroundColor.HasValue)
                 {
                     continue;
                 }
@@ -74,6 +84,11 @@ public class MedicalLaboratoryTechnologistFileProcessor(
                     continue;
 
                 var tariffCodeText = row.Cell("A").GetString().Trim();
+                if (!int.TryParse(tariffCodeText, out _))
+                {
+                    Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                    continue;
+                }
                 var procedure = await procedureRepository.FetchByCodeAndCategoryId(tariffCodeText, category.CategoryId)
                     .ConfigureAwait(false);
                 if (procedure is null)
@@ -100,7 +115,6 @@ public class MedicalLaboratoryTechnologistFileProcessor(
                     Provider = provider,
                     YearValidFor = parameters.YearValidFor,
                     DateAdded = DateTime.Now,
-                    IsGovernmentBaselineRate = false,
                     AdditionalNotes = parameters.AdditionalNotes,
                 };
                 await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);

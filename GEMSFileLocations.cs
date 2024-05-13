@@ -131,12 +131,12 @@ public static class GEMSFileLocations
         $"{Environment.CurrentDirectory}/Files/GEMS/2024/TRF046_GEMS_2024_Non-Contracted_Dental_Therapy_V1.xlsx";
 
     public static readonly string NonContractedOralHygiene2024 =
-        $"{Environment.CurrentDirectory}/Files/GEMS/2024/TRF046_GEMS_2024_Non-Contracted_Dental_Therapy_V1.xlsx";
+        $"{Environment.CurrentDirectory}/Files/GEMS/2024/TRF049_GEMS_2024_Non_Contracted_Oral_Hygienist_V1.xlsx";
 
     public static readonly string NonContractedDentistsAndDentalSpecialists2024 =
         $"{Environment.CurrentDirectory}/Files/GEMS/2024/TRF045_GEMS_2024_Non-contracted_Dentists and Dental Specialists_V1.xlsx";
 
-    public static readonly string NonContractedDentistsAndDentalSpecialists2023 =
+    public static readonly string NonContractedDentalPractitionersFile2023 =
         $"{Environment.CurrentDirectory}/Files/GEMS/TRF047_GEMS_2023_Non-Contracted_Dental_Practitioners_V1 (1).xlsx";
 
     public static readonly string NonContractedMedicalPractitionersConsultativeServices2024 =

@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors.GEMS;
 
-public class ContractedMedicalPractitionersConsultativeServices(
+public sealed class NonContractedDentalPractitionersFileProcessor(
     MediGuruDbContext dbContext,
     IProviderProcedureDataSourceTypeRepository sourceTypeRepository,
     ICategoryRepository categoryRepository,
@@ -16,31 +16,8 @@ public class ContractedMedicalPractitionersConsultativeServices(
     IProcedureRepository procedureRepository,
     IProviderProcedureRepository providerProcedureRepository)
 {
-    private readonly List<(string Code, string Name)> _disciplines = new()
-    {
-        new("10", "Anaesthesiologists"),
-        new("14", "General Medical Practice"),
-        new("15", "Family Physicians"),
-        new("16", "Obstetrics and Gynaecology"),
-        new("17", "Pulmonology"),
-        new("18", "Medicine (Specialist Physician)"),
-        new("19", "Gastroenterology"),
-        new("20", "Neurology"),
-        new("21", "Cardiology"),
-        new("24", "Neurosurgery"),
-        new("26", "Ophthalmology"),
-        new("28", "Orthopaedics"),
-        new("30", "Otorhinolaryngology"),
-        new("31", "Rheumatology"),
-        new("32", "Paediatricians"),
-        new("36", "Plastic and Reconstructive Surgery"),
-        new("42", "Surgery/Paediatric Surgery"),
-        new("44", "Cardiothoracic Surgery"),
-        new("46", "Urology"),
-        new("114", "Paediatric Surgeon")
-    };
-
-    public async Task ProcessAsync(ProcessFileParameters parameters)
+    public async Task ProcessAsync(ProcessFileParameters parameters,
+        IList<(string Code, string Name, string SubCode)> disciplines)
     {
         var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
@@ -58,7 +35,7 @@ public class ContractedMedicalPractitionersConsultativeServices(
                 throw new Exception($"Missing data source name: GEMS");
 
             var category = await categoryRepository.FetchByName(parameters.CategoryName).ConfigureAwait(false);
-            if (category == null)
+            if (category is null)
             {
                 category = new Category
                 {
@@ -70,20 +47,33 @@ public class ContractedMedicalPractitionersConsultativeServices(
 
             var provider = await providerRepository.FetchByName("Government Employees Medical Scheme (GEMS)")
                 .ConfigureAwait(false);
-            foreach (var (disciplineCode, disciplineName) in _disciplines)
+            foreach (var (disciplineCode, disciplineName, subCode) in disciplines)
             {
                 Console.WriteLine($"Now processing column: {disciplineCode}: {disciplineName}");
-                var priceColumn = GetColumnForDisciplineCode(disciplineCode);
+                var priceColumn = GetColumnForDisciplineCode(disciplineCode, subCode, parameters.YearValidFor);
                 var sheet = document.Worksheets.First();
-                var discipline = await GetDiscipline(disciplineCode, disciplineName).ConfigureAwait(false);
+                var discipline = await disciplineRepository.FetchByCodeAndSubCode(disciplineCode, subCode)
+                    .ConfigureAwait(false);
+                if (discipline is null)
+                {
+                    discipline = new Discipline
+                    {
+                        Code = disciplineCode,
+                        SubCode = subCode,
+                        DateAdded = DateTime.Now,
+                        Description = disciplineName
+                    };
+                    await disciplineRepository.InsertAsync(discipline, false).ConfigureAwait(false);
+                }
+
                 foreach (var row in sheet.Rows())
                 {
                     if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
                     {
-                        Console.WriteLine($"Row {row.RowNumber()} skipped, owing to specifications");
+                        Console.WriteLine($"Row {row.RowNumber()} has been skipped owing to specifications");
                         continue;
                     }
-                    
+
                     if (row.RowNumber() < parameters.StartingRow)
                     {
                         continue;
@@ -103,9 +93,11 @@ public class ContractedMedicalPractitionersConsultativeServices(
                     {
                         continue;
                     }
+                    
                     if (!int.TryParse(tariffCodeText, out _))
                     {
-                        Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                        Console.WriteLine(
+                            $"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
                         continue;
                     }
 
@@ -137,8 +129,7 @@ public class ContractedMedicalPractitionersConsultativeServices(
                         YearValidFor = parameters.YearValidFor,
                         DateAdded = DateTime.Now,
                         AdditionalNotes = parameters.AdditionalNotes,
-                        IsContracted = parameters.IsContracted == true,
-                        IsNonContracted = parameters.IsNonContracted == true,
+                        IsContracted = true,
                     };
                     await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
                 }
@@ -150,102 +141,41 @@ public class ContractedMedicalPractitionersConsultativeServices(
         }).ConfigureAwait(false);
     }
 
-    private string GetColumnForDisciplineCode(string code)
+    private string GetColumnForDisciplineCode(string code, string subCode, int yearValidFor)
     {
-        switch (code)
+        if (code.Equals("54", StringComparison.InvariantCultureIgnoreCase) &&
+            subCode.Equals("0", StringComparison.InvariantCultureIgnoreCase))
         {
-            case "10":
-                return "C";
-            case "14":
-                return "D";
-            case "15":
-                return "E";
-            case "16":
-                return "F";
-            case "17":
-                return "G";
-            case "18":
-                return "H";
-            case "19":
-                return "I";
-            case "20":
-                return "J";
-            case "21":
-                return "K";
-            case "24":
-                return "L";
-            case "26":
-                return "M";
-            case "28":
-                return "N";
-            case "30":
-                return "O";
-            case "31":
-                return "P";
-            case "32":
-                return "Q";
-            case "36":
-                return "R";
-            case "42":
-                return "S";
-            case "44":
-                return "T";
-            case "46":
-                return "U";
-            case "114":
-                return "V";
-            default:
-                throw new NotSupportedException($"We do not support the provided discipline code: {code}");
-        }
-    }
-
-    private async Task<Discipline> GetDiscipline(string code, string disciplineName)
-    {
-        async Task<Discipline> InsertDiscipline(Discipline disciplineInternal)
-        {
-            disciplineInternal = new Discipline
-            {
-                Code = code,
-                SubCode = "0",
-                DateAdded = DateTime.Now,
-                Description = disciplineName,
-            };
-            await disciplineRepository.InsertAsync(disciplineInternal, false).ConfigureAwait(false);
-            return disciplineInternal;
+            return "C";
         }
 
-        Discipline discipline = null;
-        switch (code)
+        if (code.Equals("62", StringComparison.InvariantCultureIgnoreCase) &&
+            subCode.Equals("0", StringComparison.InvariantCultureIgnoreCase))
         {
-            case "10":
-            case "14":
-            case "15":
-            case "16":
-            case "17":
-            case "18":
-            case "19":
-            case "20":
-            case "21":
-            case "24":
-            case "26":
-            case "28":
-            case "30":
-            case "31":
-            case "32":
-            case "36":
-            case "42":
-            case "44":
-            case "46":
-            case "114":
-                discipline = await disciplineRepository.FetchByCode(code).ConfigureAwait(false);
-                if (discipline is null)
-                {
-                    return await InsertDiscipline(discipline).ConfigureAwait(false);
-                }
-
-                return discipline;
-            default:
-                throw new NotSupportedException($"The entered discipline code is not supported: {code}");
+            return "D";
         }
+
+        if (code.Equals("64", StringComparison.InvariantCultureIgnoreCase))
+        {
+            return "E";
+        }
+
+        if (code.Equals("92", StringComparison.InvariantCultureIgnoreCase))
+        {
+            return "F";
+        }
+
+        if (code.Equals("94", StringComparison.InvariantCultureIgnoreCase))
+        {
+            return "G";
+        }
+
+        if (code.Equals("98", StringComparison.InvariantCultureIgnoreCase))
+        {
+            return "H";
+        }
+
+        throw new NotSupportedException(
+            $"The code and sub-code are not supported: [code: {code}; sub-code: {subCode}]");
     }
 }

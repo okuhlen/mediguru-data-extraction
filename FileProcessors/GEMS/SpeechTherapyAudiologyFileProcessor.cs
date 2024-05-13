@@ -65,6 +65,11 @@ public sealed class SpeechTherapyAudiologyFileProcessor(
                 }
                 foreach (var row in sheet.Rows())
                 {
+                    if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                    {
+                        Console.WriteLine($"Row {row.RowNumber()} has been skipped owing to specifications");
+                        continue;
+                    }
                     if (row.RowNumber() < parameters.StartingRow)
                     {
                         continue;
@@ -82,6 +87,12 @@ public sealed class SpeechTherapyAudiologyFileProcessor(
                     var tariffCodeText = row.Cell("A").GetString().Trim();
                     if (string.IsNullOrEmpty(tariffCodeText) || string.IsNullOrWhiteSpace(tariffCodeText))
                     {
+                        continue;
+                    }
+
+                    if (!int.TryParse(tariffCodeText, out _))
+                    {
+                        Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
                         continue;
                     }
 
@@ -112,7 +123,6 @@ public sealed class SpeechTherapyAudiologyFileProcessor(
                         Provider = provider,
                         YearValidFor = parameters.YearValidFor,
                         DateAdded = DateTime.Now,
-                        IsGovernmentBaselineRate = false,
                         AdditionalNotes = parameters.AdditionalNotes,
                         IsContracted = true,
                     };

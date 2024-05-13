@@ -1,4 +1,5 @@
 using MediGuru.DataExtractionTool.DatabaseModels;
+using MediGuru.DataExtractionTool.Helpers;
 using MediGuru.DataExtractionTool.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,15 +9,12 @@ public sealed class WoolTruSurgeonsFileProcessor(
     IProcedureRepository procedureRepository,
     IProviderRepository providerRepository,
     MediGuruDbContext dbContext,
-    IProviderProcedureTypeRepository providerProcedureTypeRepository,
     IProviderProcedureRepository providerProcedureRepository,
     IProviderProcedureDataSourceTypeRepository dataSourceRepository,
     IDisciplineRepository disciplineRepository,
     ICategoryRepository categoryRepository)
 {
-    private readonly IProviderProcedureTypeRepository _providerProcedureTypeRepository = providerProcedureTypeRepository;
-
-    private List<(string DisciplineCode, String DisciplineName)> _disciplines = new List<(string Code, string Name)>
+    private List<(string DisciplineCode, string DisciplineName)> _disciplines = new List<(string Code, string Name)>
     {
         new("24", "Neurosurgery"),
         new("26", "Ophthalmology"),
@@ -55,10 +53,14 @@ public sealed class WoolTruSurgeonsFileProcessor(
                     {
                         var code = await streamReader.ReadLineAsync() ??
                                    throw new NullReferenceException("No tariff code was read");
-                        if (code.StartsWith("0"))
-                            code = code.Substring(1, code.Length - 1);
+                        
+                        if (!int.TryParse(code, out _))
+                        {
+                            Console.WriteLine($"Could not convert {code}. On file surgeons.txt");
+                            continue;
+                        }
 
-                        var procedure = await procedureRepository.FetchByCodeAndCategoryId(code, category.CategoryId);
+                        var procedure = await procedureRepository.FetchByCodeAndCategoryId(code, category.CategoryId).ConfigureAwait(false);
                         if (procedure == null)
                         {
                             continue;
@@ -87,8 +89,7 @@ public sealed class WoolTruSurgeonsFileProcessor(
                     {
                         var price = streamReader.ReadLine().Trim();
                         ArgumentNullException.ThrowIfNull(price);
-                        var formattedPrice = GetFormattedPrice(price);
-                        providerProcedure.Price = formattedPrice;
+                        providerProcedure.Price = FormattingHelpers.GetFormattedWoolTruPrice(price);
                         providerProcedure.AdditionalNotes = null;
                         await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
                         providerProcedure = null;
@@ -100,17 +101,5 @@ public sealed class WoolTruSurgeonsFileProcessor(
             await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
         }).ConfigureAwait(false);
-    }
-
-    private static double? GetFormattedPrice(string field)
-    {
-        if (field.StartsWith("R"))
-            field = field.Substring(1, field.Length - 1);
-        if (field.Contains(" "))
-            field = field.Replace(" ", "");
-
-        if (double.TryParse(field, out var formattedPrice))
-            return formattedPrice;
-        return null;
     }
 }

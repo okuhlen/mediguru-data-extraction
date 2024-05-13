@@ -1,9 +1,10 @@
 ﻿using System.Diagnostics;
 using MediGuru.DataExtractionTool;
 using MediGuru.DataExtractionTool.Constants;
-using MediGuru.DataExtractionTool.DatabaseModels;
 using MediGuru.DataExtractionTool.FileProcessors;
+using MediGuru.DataExtractionTool.FileProcessors.CAMAF;
 using MediGuru.DataExtractionTool.FileProcessors.GEMS;
+using MediGuru.DataExtractionTool.Helpers;
 using MediGuru.DataExtractionTool.Models;
 using MediGuru.DataExtractionTool.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +35,7 @@ serviceCollection.AddDbContext<MediGuruDbContext>(
                 action.MigrationsAssembly(AssemblyNameHelper.GetAssemblyName().FullName);
                 action.EnableRetryOnFailure(6);
             },
-            connectionString: config["ConnectionStrings:MediGuruUAT"]);
+            connectionString: config["<<YOUR CONNECTION STRING>>"]);
     });
 
 serviceCollection.AddTransient<IProviderRepository, ProviderRepository>();
@@ -83,6 +84,9 @@ serviceCollection.AddTransient<NursingFileProcessor>();
 serviceCollection.AddTransient<RadiologyFileProcessor>();
 serviceCollection.AddTransient<PsychometryRegisteredCounsellorsFileProcessor>();
 serviceCollection.AddTransient<SpeechTherapyAudiologyFileProcessor>();
+serviceCollection.AddTransient<ConsultationsFileProcessor>();
+serviceCollection.AddTransient<DentistryFileProcessor>();
+serviceCollection.AddTransient<NonContractedDentalPractitionersFileProcessor>();
 
 var serviceProvider = serviceCollection.BuildServiceProvider();
 
@@ -100,7 +104,7 @@ var gemsMedicalTechnologyProcessor = serviceProvider.GetRequiredService<MedicalL
 var gemsAcupuntureProcessor = serviceProvider.GetRequiredService<AcupunctureFileProcessor>();
 var pathologyFileProcessor = serviceProvider.GetRequiredService<PathologyFileProcessor>();
 var biokinetcsFileProcessor = serviceProvider.GetRequiredService<BiokineticsFileProcessor>();
-var chiropractorsFileProcessor = serviceProvider.GetRequiredService<BiokineticsFileProcessor>();
+var chiropractorsFileProcessor = serviceProvider.GetRequiredService<ChiropracticFileProcessor>();
 var clinicalTechnologyFileProcessor = serviceProvider.GetRequiredService<ClinicalTechnologyFileProcessor>();
 var contractedAnaesthisiologistProcessor = serviceProvider.GetRequiredService<ContractedAnaesthesiologyFileProcessor>();
 var contractedDentalTherapist = serviceProvider.GetRequiredService<ContractedDentalTherapyFileProcessor>();
@@ -150,6 +154,9 @@ var sonographersFileProcessor = serviceProvider.GetRequiredService<GenericGemsFi
 var speechTherapyAudiologyFileProcessor = serviceProvider.GetRequiredService<SpeechTherapyAudiologyFileProcessor>();
 var subAcuteFileProcessor = serviceProvider.GetRequiredService<GenericGemsFileProcessor>();
 var contractedSurgeonsFileProcessor2023 = serviceProvider.GetRequiredService<ContractedSurgeonsFileProcessor>();
+var camafConsultationsFile = serviceProvider.GetRequiredService<ConsultationsFileProcessor>();
+var nonContractedDentalPractitioners2023 =
+    serviceProvider.GetRequiredService<NonContractedDentalPractitionersFileProcessor>();
 
 using var transaction = await dbContext.Database.BeginTransactionAsync().ConfigureAwait(false);
 Console.WriteLine("Now clearing destination tables on database...");
@@ -211,7 +218,8 @@ await contractedSurgeonsProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2024,
     AdditionalNotes = "Contracted GEMS surgeons rates",
     CategoryName = "Surgeons",
-    StartingRow = 110
+    StartingRow = 110,
+    RowsToSkip = RowsToSkip.GetContractedSurgeonsRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedSurgeonsFileProcessor2023.ProcessAsync(new ProcessFileParameters
 {
@@ -220,6 +228,7 @@ await contractedSurgeonsFileProcessor2023.ProcessAsync(new ProcessFileParameters
     AdditionalNotes = "Contracted GEMS surgeons rates",
     CategoryName = "Surgeons",
     StartingRow = 110,
+    RowsToSkip = RowsToSkip.GetContractedSurgeonsRowsToSkip(),
 }).ConfigureAwait(false);
 await gemsMedicalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -227,6 +236,7 @@ await gemsMedicalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = CategoryNameConstants.Technology,
     StartingRow = 13,
     FileLocation = GEMSFileLocations.MedicalLaboratoryTechnologists2024,
+    RowsToSkip = RowsToSkip.MedicalLaboratoryTechnologists,
 }).ConfigureAwait(false);
 await gemsMedicalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -234,6 +244,7 @@ await gemsMedicalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = CategoryNameConstants.Technology,
     StartingRow = 13,
     FileLocation = GEMSFileLocations.MedicalLaboratoryTechnologists2023,
+    RowsToSkip = RowsToSkip.MedicalLaboratoryTechnologists,
 }).ConfigureAwait(false);
 
 await gemsAcupuntureProcessor.ProcessAsync(new ProcessFileParameters
@@ -242,6 +253,7 @@ await gemsAcupuntureProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = CategoryNameConstants.Acupuncture,
     StartingRow = 12,
     FileLocation = GEMSFileLocations.AcupunctureFile2024,
+    RowsToSkip = RowsToSkip.GetAccupuntureRowsToSkip()
 }).ConfigureAwait(false);
 await gemsAcupuntureProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -249,6 +261,7 @@ await gemsAcupuntureProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = CategoryNameConstants.Acupuncture,
     StartingRow = 12,
     FileLocation = GEMSFileLocations.AcupunctureFile2023,
+    RowsToSkip = RowsToSkip.GetAccupuntureRowsToSkip()
 }).ConfigureAwait(false);
 
 await pathologyFileProcessor.ProcessAsync(new ProcessFileParameters
@@ -257,6 +270,7 @@ await pathologyFileProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = CategoryNameConstants.Pathology,
     StartingRow = 1,
     FileLocation = GEMSFileLocations.PathologyFile2024,
+    RowsToSkip = RowsToSkip.PathologyRowsToSkip,
 }).ConfigureAwait(false);
 await pathologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -264,6 +278,7 @@ await pathologyFileProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = CategoryNameConstants.Pathology,
     StartingRow = 2,
     FileLocation = GEMSFileLocations.PathologyFile2023,
+    RowsToSkip = RowsToSkip.PathologyRowsToSkip,
 }).ConfigureAwait(false);
 
 await biokinetcsFileProcessor.ProcessAsync(new ProcessFileParameters
@@ -272,6 +287,7 @@ await biokinetcsFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.BiokineticsFile2024,
     CategoryName = "Biokinetics",
     StartingRow = 12,
+    RowsToSkip = RowsToSkip.GetBiokineticsRowsToSkip(),
 }).ConfigureAwait(false);
 await biokinetcsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -279,6 +295,7 @@ await biokinetcsFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.BiokineticsFile2023,
     CategoryName = "Biokinetics",
     StartingRow = 12,
+    RowsToSkip = RowsToSkip.GetBiokineticsRowsToSkip()
 }).ConfigureAwait(false);
 await chiropractorsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -286,6 +303,7 @@ await chiropractorsFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.ChiropractorsFile2024,
     CategoryName = "Chiropractic",
     StartingRow = 11,
+    RowsToSkip = RowsToSkip.GetChiropractorsRowsToSkip(),
 }).ConfigureAwait(false);
 await chiropractorsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -293,13 +311,15 @@ await chiropractorsFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.ChiropractorsFile2023,
     CategoryName = "Chiropractic",
     StartingRow = 11,
+    RowsToSkip = RowsToSkip.GetChiropractorsRowsToSkip()
 }).ConfigureAwait(false);
 await clinicalTechnologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     FileLocation = GEMSFileLocations.ClinicalTechnologyFile2024,
     YearValidFor = 2024,
     StartingRow = 9,
-    CategoryName = "Clinical Technology"
+    CategoryName = "Clinical Technology",
+    RowsToSkip = RowsToSkip.GetClinicalTechnologyRowsToSkip(),
 }).ConfigureAwait(false);
 await clinicalTechnologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -307,6 +327,7 @@ await clinicalTechnologyFileProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2023,
     StartingRow = 9,
     CategoryName = "Clinical Technology",
+    RowsToSkip = RowsToSkip.GetClinicalTechnologyRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedAnaesthisiologistProcessor.ProcessAsync(new ProcessFileParameters
@@ -316,7 +337,8 @@ await contractedAnaesthisiologistProcessor.ProcessAsync(new ProcessFileParameter
     CategoryName = "Anaesthesiologist",
     YearValidFor = 2024,
     IsContracted = true,
-    FileLocation = GEMSFileLocations.ContractedAnaesthesiologistFile2024
+    FileLocation = GEMSFileLocations.ContractedAnaesthesiologistFile2024,
+    RowsToSkip = RowsToSkip.GetContractedAnaesthesiologistRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedAnaesthisiologistProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -325,7 +347,8 @@ await contractedAnaesthisiologistProcessor.ProcessAsync(new ProcessFileParameter
     CategoryName = "Anaesthesiologist",
     YearValidFor = 2023,
     IsContracted = true,
-    FileLocation = GEMSFileLocations.ContractedAnaesthesiologistFile2023
+    FileLocation = GEMSFileLocations.ContractedAnaesthesiologistFile2023,
+    RowsToSkip = RowsToSkip.GetContractedAnaesthesiologistRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedDentalTherapist.ProcessAsync(new ProcessFileParameters
@@ -336,6 +359,7 @@ await contractedDentalTherapist.ProcessAsync(new ProcessFileParameters
     CategoryName = "Dentistry",
     IsContracted = true,
     FileLocation = GEMSFileLocations.ContractedDentalTherapy2024,
+    RowsToSkip = RowsToSkip.GetContractedDentalTherapyRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedDentalTherapist.ProcessAsync(new ProcessFileParameters
 {
@@ -345,6 +369,7 @@ await contractedDentalTherapist.ProcessAsync(new ProcessFileParameters
     CategoryName = "Dentistry",
     IsContracted = true,
     FileLocation = GEMSFileLocations.ContractedDentalTherapy2023,
+    RowsToSkip = RowsToSkip.GetContractedDentalTherapyRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedDentalSpecialistProcessor.ProcessAsync(new ProcessFileParameters
@@ -356,6 +381,7 @@ await contractedDentalSpecialistProcessor.ProcessAsync(new ProcessFileParameters
     IsContracted = true,
     FileLocation = GEMSFileLocations.ContractedDentalSpecialists2024,
     EndingRow = 1156,
+    RowsToSkip = RowsToSkip.GetContractedDentalSpecialistsRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedConsultativeServices.ProcessAsync(new ProcessFileParameters
@@ -366,6 +392,7 @@ await contractedConsultativeServices.ProcessAsync(new ProcessFileParameters
     CategoryName = "Consultative Services",
     StartingRow = 5,
     IsContracted = true,
+    RowsToSkip = RowsToSkip.GetContractedMedicalPractitionersConsultativeServicesRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedConsultativeServices.ProcessAsync(new ProcessFileParameters
 {
@@ -375,6 +402,7 @@ await contractedConsultativeServices.ProcessAsync(new ProcessFileParameters
     CategoryName = "Consultative Services",
     StartingRow = 5,
     IsContracted = true,
+    RowsToSkip = RowsToSkip.GetContractedMedicalPractitionersConsultativeServicesRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedMedicalPractitionerFileProcessor.ProcessAsync(new ProcessFileParameters
@@ -384,6 +412,7 @@ await contractedMedicalPractitionerFileProcessor.ProcessAsync(new ProcessFilePar
     StartingRow = 109,
     IsContracted = true,
     AdditionalNotes = "Contracted GEMS medical practitioners",
+    RowsToSkip = RowsToSkip.GetContractedMedicalPractitionersRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedMedicalPractitionerFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -392,6 +421,7 @@ await contractedMedicalPractitionerFileProcessor.ProcessAsync(new ProcessFilePar
     StartingRow = 109,
     AdditionalNotes = "Contracted GEMS medical practitioners",
     IsContracted = true,
+    RowsToSkip = RowsToSkip.GetContractedMedicalPractitionersRowsToSkip()
 }).ConfigureAwait(false);
 
 await contractedOralHygienistsProcessor.ProcessAsync(new ProcessFileParameters
@@ -402,6 +432,7 @@ await contractedOralHygienistsProcessor.ProcessAsync(new ProcessFileParameters
     AdditionalNotes = "Contracted GEMS oral hygienists",
     CategoryName = "Oral Hygiene",
     FileLocation = GEMSFileLocations.ContractedOralHygienistsFile2024,
+    RowsToSkip = RowsToSkip.GetContractedOralHygienistRowsToSkip()
 }).ConfigureAwait(false);
 await contractedOralHygienistsProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -411,6 +442,7 @@ await contractedOralHygienistsProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = "Oral Hygiene",
     IsContracted = true,
     FileLocation = GEMSFileLocations.ContractedOralHygienistsFile2023,
+    RowsToSkip = RowsToSkip.GetContractedOralHygienistRowsToSkip()
 }).ConfigureAwait(false);
 
 await contractedPhysiciansFileProcessor.ProcessAsync(new ProcessFileParameters
@@ -419,7 +451,8 @@ await contractedPhysiciansFileProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2024,
     IsContracted = true,
     AdditionalNotes = "Contracted GEMS physicians",
-    FileLocation = GEMSFileLocations.ContractedPhysiciansFile2024
+    FileLocation = GEMSFileLocations.ContractedPhysiciansFile2024,
+    RowsToSkip = RowsToSkip.GetContractedPhysiciansRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedPhysiciansFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -428,6 +461,7 @@ await contractedPhysiciansFileProcessor.ProcessAsync(new ProcessFileParameters
     AdditionalNotes = "Contracted GEMS physicians",
     FileLocation = GEMSFileLocations.ContractedPhysiciansFile2023,
     IsContracted = true,
+    RowsToSkip = RowsToSkip.GetContractedPhysiciansRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedPsychiatryProcessor.ProcessAsync(new ProcessFileParameters
@@ -438,6 +472,7 @@ await contractedPsychiatryProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = "Psychiatry",
     AdditionalNotes = "Contracted GEMS Psychiatrist tariffs",
     IsContracted = true,
+    RowsToSkip = RowsToSkip.GetContractedPsychiatryRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedPsychiatryProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -447,6 +482,7 @@ await contractedPsychiatryProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = "Psychiatry",
     IsContracted = true,
     AdditionalNotes = "Contracted GEMS Psychiatrist tariffs",
+    RowsToSkip = RowsToSkip.GetContractedPsychiatryRowsToSkip(),
 }).ConfigureAwait(false);
 
 await contractedDentalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
@@ -456,9 +492,11 @@ await contractedDentalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 6,
     CategoryName = "Technology",
     IsContracted = true,
+    RowsToSkip = RowsToSkip.GetContractedDentalTechniciansRowsToSkip(),
 }).ConfigureAwait(false);
 await contractedDentalTechnologyProcessor.ProcessAsync(new ProcessFileParameters
 {
+    RowsToSkip = RowsToSkip.GetContractedDentalTechniciansRowsToSkip(),
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.DentalTechniciansFile2023,
     StartingRow = 6,
@@ -472,6 +510,7 @@ await dieticiansFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.DieticiansFile2024,
     StartingRow = 14,
     CategoryName = "Dietetics",
+    RowsToSkip = RowsToSkip.GetDieticiansRowsToSkip(),
 }).ConfigureAwait(false);
 await dieticiansFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -479,6 +518,7 @@ await dieticiansFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.DieticiansFile2023,
     StartingRow = 14,
     CategoryName = "Dietetics",
+    RowsToSkip = RowsToSkip.GetDieticiansRowsToSkip(),
 }).ConfigureAwait(false);
 
 await hearingAidProcessor.ProcessAsync(new ProcessFileParameters
@@ -487,6 +527,7 @@ await hearingAidProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 9,
     CategoryName = "Audiology",
     FileLocation = GEMSFileLocations.HearingAidFile2024,
+    RowsToSkip = RowsToSkip.GetHearingAidRowsToSkip(),
 }).ConfigureAwait(false);
 await hearingAidProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -494,6 +535,7 @@ await hearingAidProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 9,
     CategoryName = "Audiology",
     FileLocation = GEMSFileLocations.HearingAidFile2023,
+    RowsToSkip = RowsToSkip.GetHearingAidRowsToSkip(),
 }).ConfigureAwait(false);
 
 await homeopathsProcessor.ProcessAsync(new ProcessFileParameters
@@ -501,7 +543,8 @@ await homeopathsProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.HomeopathsFile2024,
     CategoryName = "Homeopathy",
-    StartingRow = 16
+    StartingRow = 16,
+    RowsToSkip = RowsToSkip.GetHomeopathyRowsToSkip(),
 }).ConfigureAwait(false);
 await homeopathsProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -509,20 +552,23 @@ await homeopathsProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.HomeopathsFile2023,
     CategoryName = "Homeopathy",
     StartingRow = 16,
+    RowsToSkip = RowsToSkip.GetHomeopathyRowsToSkip(),
 }).ConfigureAwait(false);
 await hospicesFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.HospicesFile2024,
     StartingRow = 7,
-    CategoryName = "Hospices"
+    CategoryName = "Hospices",
+    RowsToSkip = RowsToSkip.GetHospicesRowsToSkip(),
 }).ConfigureAwait(false);
 await hospicesFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.HospicesFile2023,
     StartingRow = 7,
-    CategoryName = "Hospices"
+    CategoryName = "Hospices",
+    RowsToSkip = RowsToSkip.GetHospicesRowsToSkip(),
 }).ConfigureAwait(false);
 await medicalScientistsProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -530,6 +576,7 @@ await medicalScientistsProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.MedicalScientistFile2024,
     CategoryName = "Medical Scientists",
     StartingRow = 7,
+    RowsToSkip = RowsToSkip.GetMedicalScientistsRowsToSkip(),
 }).ConfigureAwait(false);
 await medicalScientistsProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -537,20 +584,23 @@ await medicalScientistsProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.MedicalScientistFile2023,
     CategoryName = "Medical Scientists",
     StartingRow = 7,
+    RowsToSkip = RowsToSkip.GetMedicalScientistsRowsToSkip(),
 }).ConfigureAwait(false);
 await mentalHealthFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     CategoryName = "Mental Health",
     StartingRow = 13,
-    FileLocation = GEMSFileLocations.MentalHealthFile2024
+    FileLocation = GEMSFileLocations.MentalHealthFile2024,
+    RowsToSkip = RowsToSkip.GetMentalHealthRowsToSkip(),
 }).ConfigureAwait(false);
 await mentalHealthFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     CategoryName = "Mental Health",
     StartingRow = 13,
-    FileLocation = GEMSFileLocations.MentalHealthFile2023
+    FileLocation = GEMSFileLocations.MentalHealthFile2023,
+    RowsToSkip = RowsToSkip.GetMentalHealthRowsToSkip(),
 }).ConfigureAwait(false);
 await naturopathyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -558,6 +608,7 @@ await naturopathyFileProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = "Naturopaths",
     FileLocation = GEMSFileLocations.NaturopathFile2024,
     StartingRow = 8,
+    RowsToSkip = RowsToSkip.GetNaturopathsRowsToSkip(),
 }).ConfigureAwait(false);
 await naturopathyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -565,6 +616,7 @@ await naturopathyFileProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = "Naturopaths",
     FileLocation = GEMSFileLocations.NaturopathFile2023,
     StartingRow = 8,
+    RowsToSkip = RowsToSkip.GetNaturopathsRowsToSkip(),
 }).ConfigureAwait(false);
 await dentalTherapyProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -574,6 +626,7 @@ await dentalTherapyProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.NonContractedDentalTherapy2023,
     AdditionalNotes = "GEMS Non-Contracted dental therapists 2023",
     IsNonContracted = true,
+    RowsToSkip = RowsToSkip.GetNonContractedDentalTherapyRowsToSkip2023(),
 }, "95", "Dental Therapy").ConfigureAwait(false);
 await dentalTherapyProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -583,6 +636,7 @@ await dentalTherapyProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.NonContractedDentalTherapy2024,
     AdditionalNotes = "GEMS Non-contracted dental therapists 2024",
     IsNonContracted = true,
+    RowsToSkip = RowsToSkip.GetNonContractedDentalTherapyRowsToSkip2024(),
 }, "95", "Dental Therapy").ConfigureAwait(false);
 await oralHygieneProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -592,6 +646,7 @@ await oralHygieneProcessor.ProcessAsync(new ProcessFileParameters
     IsNonContracted = true,
     AdditionalNotes = "GEMS Non-Contracted oral hygienists",
     FileLocation = GEMSFileLocations.NonContractedOralHygiene2023,
+    RowsToSkip = RowsToSkip.GetNonContractedOralHygienistsRowsToSkip(),
 }, "113", "Oral Hygienists").ConfigureAwait(false);
 await oralHygieneProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -601,6 +656,7 @@ await oralHygieneProcessor.ProcessAsync(new ProcessFileParameters
     IsNonContracted = true,
     AdditionalNotes = "GEMS non-contracted oral hygienists",
     FileLocation = GEMSFileLocations.NonContractedOralHygiene2024,
+    RowsToSkip = RowsToSkip.GetNonContractedOralHygienistsRowsToSkip(),
 }, "113", "Oral Hygienists").ConfigureAwait(false);
 await nonContractedDentistsAndDentalSpecialistsProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -609,17 +665,30 @@ await nonContractedDentistsAndDentalSpecialistsProcessor.ProcessAsync(new Proces
     StartingRow = 72,
     FileLocation = GEMSFileLocations.NonContractedDentistsAndDentalSpecialists2024,
     AdditionalNotes = "GEMS Non-Contracted dentists and dental specialists",
-    IsNonContracted = true
+    IsNonContracted = true,
+    RowsToSkip = RowsToSkip.GetNonContractedDentistsAndDentalSpecialistsRowsToSkip(),
 }).ConfigureAwait(false);
-await nonContractedDentistsAndDentalSpecialistsProcessor.ProcessAsync(new ProcessFileParameters
+
+await nonContractedDentalPractitioners2023.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     CategoryName = "Dentistry",
     StartingRow = 72,
-    FileLocation = GEMSFileLocations.NonContractedDentistsAndDentalSpecialists2023,
-    AdditionalNotes = "GEMS Non-contracted dentists and dental specialists",
+    FileLocation = GEMSFileLocations.NonContractedDentalPractitionersFile2023,
+    AdditionalNotes = "GEMS non-contracted dental practitioners 2023",
     IsNonContracted = true,
+    RowsToSkip = RowsToSkip.GetNonContractedDentalPractitionersRowsToSkip2023(),
+
+}, new List<(string Code, string Name, string SubCode)>
+{
+    new("54", "General Dental Practitioner", "0"),
+    new("62", "Maxillofacial and Oral Surgery", "0"),
+    new("64", "Orthodontics", "0"),
+    new("92", "Oral Medicine and Periodontics", "0"),
+    new("94", "Prosthodontist", "0"),
+    new("98", "Oral Pathology", "0"),
 }).ConfigureAwait(false);
+
 await nonContractedConsultativeServicesMedicalPractitioners.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
@@ -628,6 +697,7 @@ await nonContractedConsultativeServicesMedicalPractitioners.ProcessAsync(new Pro
     IsNonContracted = true,
     CategoryName = "Consultative Services",
     FileLocation = GEMSFileLocations.NonContractedMedicalPractitionersConsultativeServices2024,
+    RowsToSkip = RowsToSkip.GetNonContractedMedicalPractitionersConsultativeServicesRowsToSkip(),
 }).ConfigureAwait(false);
 await nonContractedConsultativeServicesMedicalPractitioners.ProcessAsync(new ProcessFileParameters
 {
@@ -637,6 +707,7 @@ await nonContractedConsultativeServicesMedicalPractitioners.ProcessAsync(new Pro
     FileLocation = GEMSFileLocations.NonContractedMedicalPractitionersConsultativeServices2023,
     CategoryName = "Consultative Services",
     StartingRow = 5,
+    RowsToSkip = RowsToSkip.GetNonContractedMedicalPractitionersConsultativeServicesRowsToSkip()
 }).ConfigureAwait(false);
 await nonContractedMedicalPractitioners2024.ProcessAsync(new ProcessFileParameters
 {
@@ -645,6 +716,7 @@ await nonContractedMedicalPractitioners2024.ProcessAsync(new ProcessFileParamete
     IsNonContracted = true,
     FileLocation = GEMSFileLocations.NonContractedMedicalPractitionersFile2024,
     StartingRow = 40,
+    RowsToSkip = RowsToSkip.GetNonContractedMedicalPractitionersRowsToSkip(),
 }).ConfigureAwait(false);
 await nonContractedMedicalPractitioners2024.ProcessAsync(new ProcessFileParameters
 {
@@ -652,7 +724,8 @@ await nonContractedMedicalPractitioners2024.ProcessAsync(new ProcessFileParamete
     AdditionalNotes = "GEMS non-contracted medical practitioners",
     IsNonContracted = true,
     StartingRow = 40,
-    FileLocation = GEMSFileLocations.NonContractedMedicalPractitionersFile2023
+    FileLocation = GEMSFileLocations.NonContractedMedicalPractitionersFile2023,
+    RowsToSkip = RowsToSkip.GetNonContractedMedicalPractitionersRowsToSkip(),
 }).ConfigureAwait(false);
 await nonContractedOralHygienistProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -661,7 +734,8 @@ await nonContractedOralHygienistProcessor.ProcessAsync(new ProcessFileParameters
     IsNonContracted = true,
     StartingRow = 6,
     CategoryName = "Oral Hygiene",
-    FileLocation = GEMSFileLocations.NonContractedOralHygiene2024
+    FileLocation = GEMSFileLocations.NonContractedOralHygiene2024,
+    RowsToSkip = RowsToSkip.GetNonContractedOralHygienistsRowsToSkip(),
 }).ConfigureAwait(false);
 await nonContractedOralHygienistProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -670,7 +744,8 @@ await nonContractedOralHygienistProcessor.ProcessAsync(new ProcessFileParameters
     IsNonContracted = true,
     StartingRow = 6,
     CategoryName = "Oral Hygiene",
-    FileLocation = GEMSFileLocations.NonContractedOralHygiene2023
+    FileLocation = GEMSFileLocations.NonContractedOralHygiene2023,
+    RowsToSkip = RowsToSkip.GetNonContractedOralHygienistsRowsToSkip(),
 }).ConfigureAwait(false);
 await nonContractedPsychiatristProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -679,7 +754,8 @@ await nonContractedPsychiatristProcessor.ProcessAsync(new ProcessFileParameters
     CategoryName = "Psychiatry",
     FileLocation = GEMSFileLocations.NonContractedPsychiatristFile2024,
     StartingRow = 6,
-    IsNonContracted = true
+    IsNonContracted = true,
+    RowsToSkip = RowsToSkip.GetNonContractedPsychiatristRowsToSkip(),
 }).ConfigureAwait(false);
 await nonContractedPsychiatristProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -689,6 +765,7 @@ await nonContractedPsychiatristProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.NonContractedPsychiatristFile2023,
     StartingRow = 6,
     IsNonContracted = true,
+    RowsToSkip = RowsToSkip.GetNonContractedPsychiatristRowsToSkip(),
 }).ConfigureAwait(false);
 await nursingFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -696,20 +773,23 @@ await nursingFileProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.NursingFile2024,
     StartingRow = 26,
+    RowsToSkip = RowsToSkip.GetNursingRowsToSkip2023(),
 }).ConfigureAwait(false);
 await nursingFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     CategoryName = "Nursing",
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.NursingFile2023,
-    StartingRow = 26
+    StartingRow = 26,
+    RowsToSkip = RowsToSkip.GetNursingRowsToSkip2023(),
 }).ConfigureAwait(false);
 await occupationalTherapistsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.OccupationalTherapistsFile2024,
     StartingRow = 22,
-    CategoryName = "Occupational Therapy"
+    CategoryName = "Occupational Therapy",
+    RowsToSkip = RowsToSkip.GetOccupationalTherapistsRowsToSkip(),
 }, "66", "Occupational Therapists").ConfigureAwait(false);
 await occupationalTherapistsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -717,34 +797,40 @@ await occupationalTherapistsFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.OccupationalTherapistsFile2023,
     StartingRow = 22,
     CategoryName = "Occupational Therapy",
+    RowsToSkip = RowsToSkip.GetOccupationalTherapistsRowsToSkip(),
 }, "66", "Occupational Therapists").ConfigureAwait(false);
 await orthoptistsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     StartingRow = 5,
     FileLocation = GEMSFileLocations.OrthoptistsFile2024,
-    CategoryName = "Orthoptists"
+    CategoryName = "Orthoptists",
+    RowsToSkip = RowsToSkip.GetOrthoptistsRowsToSkip(),
 }, "74", "Orthoptists").ConfigureAwait(false);
 await orthoptistsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     StartingRow = 5,
     FileLocation = GEMSFileLocations.OrthoptistsFile2023,
-    CategoryName = "Orthoptists"
+    CategoryName = "Orthoptists",
+    RowsToSkip = RowsToSkip.GetOrthoptistsRowsToSkip(),
 }, "74", "Orthoptists").ConfigureAwait(false);
 await orthoticAndProstheticsProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.OrthoticAndProstheticsFile2024,
     StartingRow = 4,
-    CategoryName = "Orthotics and Prosthetics"
+    CategoryName = "Orthotics and Prosthetics",
+    RowsToSkip = RowsToSkip.GetOrthoticsAndProstheticsRowsToSkip(),
+    
 }, "87", "Orthotist & Prosthetist").ConfigureAwait(false);
 await orthoticAndProstheticsProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.OrthoticAndProstheticsFile2023,
     StartingRow = 4,
-    CategoryName = "Orthotics and Prosthetics"
+    CategoryName = "Orthotics and Prosthetics",
+    RowsToSkip = RowsToSkip.GetOrthoticsAndProstheticsRowsToSkip(),
 }, "87", "Orthotist & Prosthetist").ConfigureAwait(false);
 await physiotherapistsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -752,27 +838,31 @@ await physiotherapistsFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.PhysiotherapistsFile2024,
     CategoryName = "Physiotherapy",
     StartingRow = 30,
+    RowsToSkip = RowsToSkip.GetPhysiotherapyRowsToSkip(),
 }, "72", "Physiotherapists").ConfigureAwait(false);
 await physiotherapistsFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.PhysiotherapistsFile2023,
     StartingRow = 30,
-    CategoryName = "Physiotherapy"
+    CategoryName = "Physiotherapy",
+    RowsToSkip = RowsToSkip.GetPhysiotherapyRowsToSkip(),
 }, "72", "Physiotherapists").ConfigureAwait(false);
 await phytotherapyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.PhytotherapyFile2024,
     StartingRow = 7,
-    CategoryName = "Phytotherapists"
+    CategoryName = "Phytotherapists",
+    RowsToSkip = RowsToSkip.GetPhytotherapyRowsToSkip(),
 }, "103", "Phytotherapy").ConfigureAwait(false);
 await phytotherapyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.PhytotherapyFile2023,
     StartingRow = 7,
-    CategoryName = "Phytotherapists"
+    CategoryName = "Phytotherapists",
+    RowsToSkip = RowsToSkip.GetPhytotherapyRowsToSkip(),
 }, "103", "Phytotherapy").ConfigureAwait(false);
 await podiatryFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -780,6 +870,7 @@ await podiatryFileProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 17,
     FileLocation = GEMSFileLocations.PodiatristsFile2024,
     CategoryName = "Podiatrists",
+    RowsToSkip = RowsToSkip.GetPodiatristsRowsToSkip(),
 }, "68", "Podiatry").ConfigureAwait(false);
 await podiatryFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -787,6 +878,7 @@ await podiatryFileProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 17,
     FileLocation = GEMSFileLocations.PodiatristsFile2023,
     CategoryName = "Podiatrists",
+    RowsToSkip = RowsToSkip.GetPodiatristsRowsToSkip(),
 }, "68", "Podiatry").ConfigureAwait(false);
 await psychologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -794,6 +886,7 @@ await psychologyFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.PsychologistsFile2024,
     StartingRow = 15,
     CategoryName = "Psychology",
+    RowsToSkip = RowsToSkip.GetPsychologistsRowsToSkip(),
 }, "86", "Psychologists").ConfigureAwait(false);
 await psychologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -801,34 +894,39 @@ await psychologyFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.PsychologistsFile2023,
     StartingRow = 15,
     CategoryName = "Psychology",
+    RowsToSkip = RowsToSkip.GetPsychologistsRowsToSkip(),
 }, "86", "Psychologists").ConfigureAwait(false);
 await psychometryFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     StartingRow = 8,
     FileLocation = GEMSFileLocations.PsychometryRegisteredCounsellorFile2024,
-    CategoryName = "Psychometry and Counsellors"
+    CategoryName = "Psychometry and Counsellors",
+    RowsToSkip = RowsToSkip.GetPsychometryRegisteredCounsellorsRowsToSkip(),
 }).ConfigureAwait(false);
 await psychometryFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     StartingRow = 8,
     FileLocation = GEMSFileLocations.PsychometryRegisteredCounsellorFile2023,
-    CategoryName = "Psychometry and Counsellors"
+    CategoryName = "Psychometry and Counsellors",
+    RowsToSkip = RowsToSkip.GetPsychometryRegisteredCounsellorsRowsToSkip(),
 }).ConfigureAwait(false);
 await radiographyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     StartingRow = 10,
     FileLocation = GEMSFileLocations.RadiographyFile2024,
-    CategoryName = "Radiographers"
+    CategoryName = "Radiographers",
+    RowsToSkip = RowsToSkip.GetRadiographyRowsToSkip(),
 }, "39", "Radiography").ConfigureAwait(false);
 await radiographyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     StartingRow = 10,
     FileLocation = GEMSFileLocations.RadiographyFile2023,
-    CategoryName = "Radiographers"
+    CategoryName = "Radiographers",
+    RowsToSkip = RowsToSkip.GetRadiographyRowsToSkip(),
 }, "39", "Radiography").ConfigureAwait(false);
 await radiologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -836,6 +934,7 @@ await radiologyFileProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 29,
     FileLocation = GEMSFileLocations.RadiologyFile2024,
     CategoryName = "Radiology",
+    RowsToSkip = RowsToSkip.GetRadiologyRowsToSkip(),
 }).ConfigureAwait(false);
 await radiologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -843,20 +942,23 @@ await radiologyFileProcessor.ProcessAsync(new ProcessFileParameters
     StartingRow = 29,
     FileLocation = GEMSFileLocations.RadiologyFile2023,
     CategoryName = "Radiology",
+    RowsToSkip = RowsToSkip.GetRadiologyRowsToSkip(),
 }).ConfigureAwait(false);
 await socialWorkersFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2024,
     StartingRow = 14,
     FileLocation = GEMSFileLocations.SocialWorkersFile2024,
-    CategoryName = "Social Workers"
+    CategoryName = "Social Workers",
+    RowsToSkip = RowsToSkip.GetSocialWorksRowsToSkip(),
 }, "89", "Social Workers").ConfigureAwait(false);
 await socialWorkersFileProcessor.ProcessAsync(new ProcessFileParameters
 {
     YearValidFor = 2023,
     StartingRow = 14,
     FileLocation = GEMSFileLocations.SocialWorkersFile2023,
-    CategoryName = "Social Workers"
+    CategoryName = "Social Workers",
+    RowsToSkip = RowsToSkip.GetSocialWorksRowsToSkip(),
 }, "89", "Social Workers").ConfigureAwait(false);
 await sonographersFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -864,6 +966,7 @@ await sonographersFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.SonographersFile2024,
     StartingRow = 6,
     CategoryName = "Sonographers",
+    RowsToSkip = RowsToSkip.GetSonographersRowsToSkip(),
 }, "39", "Sonographers", "4").ConfigureAwait(false);
 await sonographersFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -871,6 +974,7 @@ await sonographersFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.SonographersFile2023,
     StartingRow = 6,
     CategoryName = "Sonographers",
+    RowsToSkip = RowsToSkip.GetSonographersRowsToSkip(),
 }, "39", "Sonographers", "4").ConfigureAwait(false);
 await speechTherapyAudiologyFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -878,6 +982,7 @@ await speechTherapyAudiologyFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.SpeechTherapyAudiologyFile2024,
     StartingRow = 13,
     CategoryName = "Speech Therapists & Audiologists",
+    RowsToSkip = RowsToSkip.GetAudiologyRowsToSkip(),
 }, new List<(string Code, string Name, string SubCode)>
 {
     new("82", "Speech Therapy", "1"),
@@ -888,6 +993,7 @@ await speechTherapyAudiologyFileProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2023,
     FileLocation = GEMSFileLocations.SpeechTherapyAudiologyFile2023,
     StartingRow = 13,
+    RowsToSkip = RowsToSkip.GetAudiologyRowsToSkip(),
     CategoryName = "Speech Therapists & Audiologists",
 }, new List<(string Code, string Name, string SubCode)>
 {
@@ -899,7 +1005,8 @@ await subAcuteFileProcessor.ProcessAsync(new ProcessFileParameters
     YearValidFor = 2024,
     FileLocation = GEMSFileLocations.SubAcuteFacilitiesFile2024,
     StartingRow = 7,
-    CategoryName = "Sub-Acute Facilities"
+    CategoryName = "Sub-Acute Facilities",
+    RowsToSkip = RowsToSkip.GetSubAcuteFacilitiesRowsToSkip(),
 }, "49", "Sub-acute Facilities").ConfigureAwait(false);
 await subAcuteFileProcessor.ProcessAsync(new ProcessFileParameters
 {
@@ -907,11 +1014,16 @@ await subAcuteFileProcessor.ProcessAsync(new ProcessFileParameters
     FileLocation = GEMSFileLocations.SubAcuteFacilitiesFile2023,
     StartingRow = 7,
     CategoryName = "Sub-Acute Facilities",
+    RowsToSkip = RowsToSkip.GetSubAcuteFacilitiesRowsToSkip(),
 }, "49", "Sub-acute Facilities").ConfigureAwait(false);
 Console.WriteLine();
 Console.WriteLine(
     "Now Processing last WoolTru file: surgeons.txt. This processor makes use of existing disciplines which wouldnt be available earlier");
 await wooltruSurgeonsProcessor.ProcessAsync().ConfigureAwait(false);
+
+await camafConsultationsFile.ProcessAsync().ConfigureAwait(false);
+var camafDentistryProcessor = serviceProvider.GetRequiredService<DentistryFileProcessor>();
+await camafDentistryProcessor.ProcessAsync().ConfigureAwait(false);
 
 Console.Clear();
 PrintHeading();

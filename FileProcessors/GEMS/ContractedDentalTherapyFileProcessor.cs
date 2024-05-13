@@ -63,7 +63,16 @@ public sealed class ContractedDentalTherapyFileProcessor(
             var sheet = document.Worksheets.First();
             foreach (var row in sheet.Rows())
             {
+                if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                {
+                    Console.WriteLine($"Row {row.RowNumber()} has been skipped owing to specifications");
+                    continue;
+                }
                 if (row.RowNumber() < parameters.StartingRow)
+                {
+                    continue;
+                }
+                if (row.Cell("A").Style.Fill.BackgroundColor.HasValue)
                 {
                     continue;
                 }
@@ -76,7 +85,11 @@ public sealed class ContractedDentalTherapyFileProcessor(
                 {
                     continue;
                 }
-
+                if (!int.TryParse(tariffCodeText, out _))
+                {
+                    Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
+                    continue;
+                }
                 var procedure = await procedureRepository.FetchByCodeAndCategoryId(tariffCodeText, category.CategoryId)
                     .ConfigureAwait(false);
                 if (procedure is null)
@@ -103,7 +116,6 @@ public sealed class ContractedDentalTherapyFileProcessor(
                     Provider = provider,
                     YearValidFor = parameters.YearValidFor,
                     DateAdded = DateTime.Now,
-                    IsGovernmentBaselineRate = false,
                     IsContracted = parameters.IsContracted == true,
                     IsNonContracted = parameters.IsNonContracted == true,
                     AdditionalNotes = parameters.AdditionalNotes,

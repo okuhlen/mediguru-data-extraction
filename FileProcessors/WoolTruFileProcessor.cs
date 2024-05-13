@@ -1,40 +1,20 @@
 ﻿using MediGuru.DataExtractionTool.Constants;
 using MediGuru.DataExtractionTool.DatabaseModels;
+using MediGuru.DataExtractionTool.Helpers;
 using MediGuru.DataExtractionTool.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors;
 
-public sealed class WoolTruFileProcessor
+public sealed class WoolTruFileProcessor(
+    IProcedureRepository procedureRepository,
+    IProviderRepository providerRepository,
+    MediGuruDbContext dbContext,
+    IProviderProcedureRepository providerProcedureRepository,
+    IProviderProcedureDataSourceTypeRepository dataSourceRepository,
+    IDisciplineRepository disciplineRepository,
+    ICategoryRepository categoryRepository)
 {
-    private readonly IProcedureRepository _procedureRepository;
-    private readonly IProviderRepository _providerRepository;
-    private readonly MediGuruDbContext _dbContext;
-    private readonly IProviderProcedureTypeRepository _providerProcedureTypeRepository;
-    private readonly IProviderProcedureRepository _providerProcedureRepository;
-    private readonly IProviderProcedureDataSourceTypeRepository _dataSourceRepository;
-    private readonly IDisciplineRepository _disciplineRepository;
-    private readonly ICategoryRepository _categoryRepository;
-
-    public WoolTruFileProcessor(IProcedureRepository procedureRepository,
-        IProviderRepository providerRepository,
-        MediGuruDbContext dbContext,
-        IProviderProcedureRepository providerProcedureRepository,
-        IProviderProcedureTypeRepository providerProcedureTypeRepository,
-        IProviderProcedureDataSourceTypeRepository dataSourceRepository,
-        IDisciplineRepository disciplineRepository,
-        ICategoryRepository categoryRepository)
-    {
-        _procedureRepository = procedureRepository;
-        _providerRepository = providerRepository;
-        _dbContext = dbContext;
-        _providerProcedureRepository = providerProcedureRepository;
-        _providerProcedureTypeRepository = providerProcedureTypeRepository;
-        _dataSourceRepository = dataSourceRepository;
-        _disciplineRepository = disciplineRepository;
-        _categoryRepository = categoryRepository;
-    }
-
     private Category FetchByFileName(List<Category> categoriesList, string fileName)
     {
         switch (fileName)
@@ -135,14 +115,14 @@ public sealed class WoolTruFileProcessor
 
     public async Task ProcessAsync()
     {
-        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
-            var categories = await _categoryRepository.FetchAll();
+            var categories = await categoryRepository.FetchAll();
             var cats = categories.ToList();
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-            var provider = await _providerRepository.FetchByName("WoolTru Healthcare Fund");
-            var dataSourceType = await _dataSourceRepository.FetchByNameAsync("WoolTru");
+            await using var transaction = await dbContext.Database.BeginTransactionAsync();
+            var provider = await providerRepository.FetchByName("WoolTru Healthcare Fund");
+            var dataSourceType = await dataSourceRepository.FetchByNameAsync("WoolTru");
             Console.WriteLine("Now processing WoolTru data files. This will take a while. Please wait...");
             foreach (var file in Directory.GetFiles($"{Directory.GetCurrentDirectory()}/Files/WoolTru", "*.txt"))
             {
@@ -150,7 +130,7 @@ public sealed class WoolTruFileProcessor
                 fileInfo.Refresh();
                 var category = FetchByFileName(cats, fileInfo.Name);
                 var disciplineString = WoolTruFileNameHelper.GetDisciplineByFileName(fileInfo.Name);
-                var discipline = await _disciplineRepository.FetchByName(disciplineString);
+                var discipline = await disciplineRepository.FetchByName(disciplineString);
                 if (discipline is null ||
                     disciplineString.Equals("surgeons", StringComparison.InvariantCultureIgnoreCase))
                 {
@@ -168,10 +148,14 @@ public sealed class WoolTruFileProcessor
                     {
                         var code = await streamReader.ReadLineAsync() ??
                                    throw new NullReferenceException("No tariff code was read");
-                        if (code.StartsWith("0"))
-                            code = code.Substring(1, code.Length - 1);
+                        
+                        if (!int.TryParse(code, out _))
+                        {
+                            Console.WriteLine($"Could not parse the tariff code provided: {code}");
+                            continue;
+                        }
 
-                        var procedure = await _procedureRepository.FetchByCodeAndCategoryId(code, category.CategoryId);
+                        var procedure = await procedureRepository.FetchByCodeAndCategoryId(code, category.CategoryId).ConfigureAwait(false);
                         if (procedure == null)
                         {
                             continue;
@@ -200,31 +184,19 @@ public sealed class WoolTruFileProcessor
                     {
                         var price = streamReader.ReadLine().Trim();
                         ArgumentNullException.ThrowIfNull(price);
-                        var formattedPrice = GetFormattedPrice(price);
+                        var formattedPrice = FormattingHelpers.GetFormattedWoolTruPrice(price);
                         providerProcedure.Price = formattedPrice;
                         providerProcedure.AdditionalNotes = null;
-                        await _providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
+                        await providerProcedureRepository.InsertAsync(providerProcedure, false).ConfigureAwait(false);
                         providerProcedure = null;
                         lineNumber = 0;
                     }
                 }
             }
 
-            await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
             await transaction.CommitAsync().ConfigureAwait(false);
         }).ConfigureAwait(false);
-    }
-
-    private static double? GetFormattedPrice(string field)
-    {
-        if (field.StartsWith("R"))
-            field = field.Substring(1, field.Length - 1);
-        if (field.Contains(" "))
-            field = field.Replace(" ", "");
-
-        if (double.TryParse(field, out var formattedPrice))
-            return formattedPrice;
-        return null;
     }
 
     private static class WoolTruFileNameHelper

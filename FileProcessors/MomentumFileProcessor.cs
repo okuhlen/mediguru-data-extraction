@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediGuru.DataExtractionTool.FileProcessors;
 
+//NOTES:
+//Momentum does not have tariff descriptors. As a makeshift solution, we use the descriptors from GEMS, if there is a match.
 internal sealed class MomentumFileProcessor(
     MediGuruDbContext dbContext,
     IProviderRepository providerRepository,
@@ -46,26 +48,18 @@ internal sealed class MomentumFileProcessor(
                         if (row.RowNumber() <= startingRow)
                             continue;
 
-                        //todo: momentum files do not have the descriptors added. 
-                        //todo: create a separate codes extractor - extract codes and descriptors from GEMS files??
-                        string procedureCode;
-                        if (row.Cell("A").TryGetValue<string>(out var code))
+                        var tariffCodeText = row.Cell("A").GetString();
+                        if (string.IsNullOrEmpty(tariffCodeText) || string.IsNullOrWhiteSpace(tariffCodeText))
                         {
-                            procedureCode = code;
-                        }
-                        else if (row.Cell("A").TryGetValue<int>(out var newCode))
-                        {
-                            procedureCode = Convert.ToString(newCode);
-                        }
-                        else if (row.Cell("A").TryGetValue<double>(out var decimalNumber))
-                        {
-                            procedureCode = Convert.ToString(decimalNumber);
-                        }
-                        else
-                        {
-                            throw new Exception("Cannot parse row column value");
+                            Console.WriteLine($"Row {row.RowNumber()} skipped due to being empty");
+                            continue;
                         }
 
+                        if (!int.TryParse(tariffCodeText, out _))
+                        {
+                            Console.WriteLine($"Could not convert row: {row.RowNumber()} in {file}. Code: {tariffCodeText}");
+                            continue; //move to next row
+                        }
                         string disciplines;
 
                         if (row.Cell("B").TryGetValue<string>(out var d))
@@ -100,11 +94,11 @@ internal sealed class MomentumFileProcessor(
                             price = 0;
                         }
 
-                        var procedure = proceduresList.FirstOrDefault(x => x.Code == procedureCode);
+                        var procedure = proceduresList.FirstOrDefault(x => x.Code == tariffCodeText);
                         if (procedure == null)
                         {
                             await writer.WriteLineAsync(
-                                $"ERROR: Could not find procedure code: {procedureCode}. File processing: {file}. Please investigate.");
+                                $"ERROR: Could not find procedure code: {tariffCodeText}. File processing: {file}. Please investigate.").ConfigureAwait(false);
                             continue;
                         }
 
@@ -113,7 +107,7 @@ internal sealed class MomentumFileProcessor(
                             var discipline = disciplinesCodes.FirstOrDefault(x => x.Code == disciplines);
                             if (discipline is null)
                             {
-                                await writer.WriteLineAsync($"could not find discipline: {discipline}");
+                                await writer.WriteLineAsync($"could not find discipline: {discipline}").ConfigureAwait(false);
                                 continue;
                             }
 

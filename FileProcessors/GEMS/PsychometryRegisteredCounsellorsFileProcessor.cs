@@ -70,7 +70,16 @@ public sealed class PsychometryRegisteredCounsellorsFileProcessor(
                 }
                 foreach (var row in sheet.Rows())
                 {
+                    if (!parameters.RowsToSkip.IsNullOrEmpty() && parameters.RowsToSkip.Contains(row.RowNumber()))
+                    {
+                        Console.WriteLine($"Rows {row.RowNumber()} has been skipped owing to specifications");
+                        continue;
+                    }
                     if (row.RowNumber() < parameters.StartingRow)
+                    {
+                        continue;
+                    }
+                    if (row.Cell("A").Style.Fill.BackgroundColor.HasValue)
                     {
                         continue;
                     }
@@ -87,6 +96,12 @@ public sealed class PsychometryRegisteredCounsellorsFileProcessor(
                     var tariffCodeText = row.Cell("A").GetString().Trim();
                     if (string.IsNullOrEmpty(tariffCodeText) || string.IsNullOrWhiteSpace(tariffCodeText))
                     {
+                        continue;
+                    }
+
+                    if (!int.TryParse(tariffCodeText, out _))
+                    {
+                        Console.WriteLine($"Could not convert {tariffCodeText}. On file {parameters.FileLocation} in row: {row.RowNumber()}");
                         continue;
                     }
 
@@ -117,7 +132,6 @@ public sealed class PsychometryRegisteredCounsellorsFileProcessor(
                         Provider = provider,
                         YearValidFor = parameters.YearValidFor,
                         DateAdded = DateTime.Now,
-                        IsGovernmentBaselineRate = false,
                         AdditionalNotes = parameters.AdditionalNotes,
                         IsContracted = false,
                     };

@@ -17,4 +17,5 @@ public sealed class ProcessFileParameters
     public bool? IsNonContracted { get; set; }
     
     public bool? IsContracted { get; set; }
+    public IList<int> RowsToSkip { get; set; }
 }
