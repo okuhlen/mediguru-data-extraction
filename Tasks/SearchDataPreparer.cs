@@ -19,9 +19,10 @@ public sealed class SearchDataPreparer(
 {
     private async Task<bool> NoDataExists()
     {
-        return await searchDataRepository.IsEmpty() || await searchDataPointRepository.IsEmpty();
+        return await searchDataRepository.IsEmpty().ConfigureAwait(false) ||
+               await searchDataPointRepository.IsEmpty().ConfigureAwait(false);
     }
-    
+
     public async Task Execute(IJobExecutionContext context)
     {
         ILookup<string, SearchDataPointModel> officialDataPoints;
@@ -31,23 +32,32 @@ public sealed class SearchDataPreparer(
 
         if (await NoDataExists().ConfigureAwait(false))
         {
+            Console.WriteLine("Now fetching official data points from beginning of time");
             officialDataPoints = await officialDataPointsRetriever.FetchAllDataPoints(null).ConfigureAwait(false);
         }
         else
         {
-            officialDataPoints = await officialDataPointsRetriever.FetchAllDataPoints(lastSuccessfulRunDate).ConfigureAwait(false);
+            Console.WriteLine($"Now fetching official data points from the: {lastSuccessfulRunDate!.Value.Date}");
+            officialDataPoints = await officialDataPointsRetriever.FetchAllDataPoints(lastSuccessfulRunDate)
+                .ConfigureAwait(false);
         }
-        
+        Console.WriteLine("Fetch done");
         Console.WriteLine("Now processing official data points...");
-        var processedOfficialItems = await CreateDataPoints(context, officialDataPoints, false, true).ConfigureAwait(false);
+        var processedOfficialItems =
+            await CreateDataPoints(context, officialDataPoints, false, true).ConfigureAwait(false);
+        Console.WriteLine("Now processing user supplied data points...");
 
+        Console.WriteLine("Now calculating min and max pricing for all data points.");
+        CalculateMinAndMaxPrices(processedOfficialItems);
+        
         Console.WriteLine("Populating search data table....");
         await InsertSearchData(processedOfficialItems.SearchData).ConfigureAwait(false);
         await InsertSearchDataPoints(processedOfficialItems.SearchDataPoints).ConfigureAwait(false);
-        
+
         stopwatch.Stop();
         Console.Clear();
-        Console.WriteLine($"Task Completed! Task took: {stopwatch.Elapsed.Hours} hours {stopwatch.Elapsed.Minutes} minutes and {stopwatch.Elapsed.Seconds} seconds");
+        Console.WriteLine(
+            $"Task Completed! Task took: {stopwatch.Elapsed.Hours} hours {stopwatch.Elapsed.Minutes} minutes and {stopwatch.Elapsed.Seconds} seconds");
     }
 
     private async Task<CreateDataPointsModel> CreateDataPoints(IJobExecutionContext context,
@@ -64,80 +74,115 @@ public sealed class SearchDataPreparer(
             var i = await procedureRepository.FetchAll().ConfigureAwait(false);
             procedures = i.ToList();
         }).ConfigureAwait(false);
-        
-        ArgumentNullException.ThrowIfNull(procedures, "procedures");
-        foreach (var item in officialDataPoints)
+
+        ArgumentNullException.ThrowIfNull(procedures, nameof(procedures));
+        foreach (var item in officialDataPoints) //tariff code groupings
         {
-            var yearToAggregate = item.Max(x => x.YearValidFor);
-            var sortedItems = item.OrderByDescending(x => x.YearValidFor);
-            var minPrice = sortedItems.Where(x => x.YearValidFor == yearToAggregate).Min(x => x.Price);
-            var maxPrice = sortedItems.Where(x => x.YearValidFor == yearToAggregate).Max(x => x.Price);
-            
-            foreach (var dataPoint in sortedItems)
+            //for each tariff code, there are numerous data points. Try group them further by medical aid scheme
+            var medicalAidGroupings = item.ToLookup(key => key.MedicalAidSchemeId, value => value);
+
+            foreach (var medicalAid in medicalAidGroupings)
             {
-                //do not index items which do not have a price; GEMS will not pay for these.
-                if (dataPoint.Price <= 0)
+                foreach (var dataPoint in medicalAid)
                 {
-                    continue;
-                }
-                
-                SearchData? searchData = null;
-                if (!searchDataItems.Exists(x => string.Equals(x.MedicalAidSchemeId, dataPoint.MedicalAidSchemeId, StringComparison.OrdinalIgnoreCase) && string.Equals(x.TariffCode, dataPoint.TariffCode, StringComparison.OrdinalIgnoreCase)))
-                {
-                    searchData = new SearchData
+                    //go through all the data points for the provider
+                    SearchData? searchData = null;
+                    if (!searchDataItems.Exists(x =>
+                            string.Equals(x.MedicalAidSchemeId, dataPoint.MedicalAidSchemeId,
+                                StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(x.TariffCode, dataPoint.TariffCode, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        searchData = new SearchData
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            CreatedDate = DateTime.Now,
+                            MedicalAidSchemeId = dataPoint.MedicalAidSchemeId,
+                            HasOfficialDataPoints = isOfficialSupplied,
+                            HasUserDataPoints = isUserSupplied,
+                            TariffCode = dataPoint.TariffCode,
+                            UpdateDate = DateTime.Now,
+                            TariffCodeDescription = procedures.First(x =>
+                                    string.Equals(x.Code, dataPoint.TariffCode, StringComparison.OrdinalIgnoreCase))
+                                .CodeDescriptor,
+                        };
+                        searchDataItems.Add(searchData);
+                    }
+                    else
+                    {
+                        searchData = searchDataItems.First(x =>
+                            string.Equals(x.TariffCode, dataPoint.TariffCode, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(x.MedicalAidSchemeId, dataPoint.MedicalAidSchemeId,
+                                StringComparison.OrdinalIgnoreCase));
+                        searchData.HasOfficialDataPoints = !isUserSupplied;
+                        searchData.UpdateDate = DateTime.Now;
+                        searchData.HasUserDataPoints = isUserSupplied || dataPoint.IsUserDataPoint;
+                    }
+
+                    var searchDataPointItem = new SearchDataPoint
                     {
                         Id = Guid.NewGuid().ToString(),
-                        CreatedDate = DateTime.Now,
+                        CategoryId = dataPoint.CategoryId,
+                        DateAdded = dataPoint.DateAdded,
+                        DisciplineId = dataPoint.DoctorId,
+                        IsOfficialSource = dataPoint.IsOfficialDataPoint,
+                        IsUserSupplied = dataPoint.IsUserDataPoint,
+                        IsThirdPartySource = dataPoint.IsThirdPartyDataPoint,
+                        SearchDataId = searchData.Id,
                         MedicalAidSchemeId = dataPoint.MedicalAidSchemeId,
-                        HasOfficialDataPoints = isOfficialSupplied,
-                        StartPrice = minPrice,
-                        EndPrice = maxPrice,
-                        HasUserDataPoints = isUserSupplied,
-                        TariffCode = dataPoint.TariffCode,
-                        UpdateDate = DateTime.Now,
+                        MedicalAidPlanName = dataPoint.MedicalAidPlanOption,
+                        Price = dataPoint.Price,
                         YearValidFor = dataPoint.YearValidFor,
-                        TariffCodeDescription = procedures.First(x =>
-                                string.Equals(x.Code, dataPoint.TariffCode,
-                                    StringComparison.OrdinalIgnoreCase))
-                            .CodeDescriptor
                     };
-                    searchDataItems.Add(searchData);
+                    searchDataPoints.Add(searchDataPointItem);
                 }
-                else
-                {
-                    searchData = searchDataItems.First(x => string.Equals(x.TariffCode, dataPoint.TariffCode, StringComparison.OrdinalIgnoreCase) && string.Equals(x.MedicalAidSchemeId, dataPoint.MedicalAidSchemeId, StringComparison.OrdinalIgnoreCase));
-                    searchData.HasOfficialDataPoints = !isUserSupplied;
-                }
-                
-                var updateDate = DateTime.Now;
-                searchData.StartPrice = minPrice;
-                searchData.EndPrice = maxPrice;
-                searchData.UpdateDate = updateDate;
-
-                var searchDataPointItem = new SearchDataPoint
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    CategoryId = dataPoint.CategoryId,
-                    DateAdded = dataPoint.DateAdded,
-                    DisciplineId = dataPoint.DoctorId,
-                    IsOfficialSource = dataPoint.IsOfficialDataPoint,
-                    IsUserSupplied = dataPoint.IsUserDataPoint,
-                    IsThirdPartySource = dataPoint.IsThirdPartyDataPoint,
-                    SearchDataId = searchData.Id,
-                    MedicalAidSchemeId = dataPoint.MedicalAidSchemeId,
-                    MedicalAidPlanName = dataPoint.MedicalAidPlanOption,
-                    Price = dataPoint.Price,
-                    YearValidFor = dataPoint.YearValidFor,
-                };
-                searchDataPoints.Add(searchDataPointItem);
             }
         }
-
+        
         return new()
         {
             SearchData = searchDataItems,
             SearchDataPoints = searchDataPoints,
         };
+    }
+
+    // it could be argued that this calculation could be done in the above method, however, some strange calculations mismatches happened,
+    // and I am too lazy to fine-tune the code :-) . My code has consumed more electricity than necessary (send the environmentalists my way :-) ) 
+    private void CalculateMinAndMaxPrices(CreateDataPointsModel dataPointsModel)
+    {
+        Console.WriteLine("Now calculating min and maximum prices.");
+
+        foreach (var searchData in dataPointsModel.SearchData)
+        {
+            var searchDataPoints = dataPointsModel.SearchDataPoints.Where(x => x.SearchDataId == searchData.Id);
+            var maxYearToAggregateFor = searchDataPoints.Select(x => x.YearValidFor).DefaultIfEmpty().Max();
+
+            var maxPrice = searchDataPoints.Where(x => x.YearValidFor == maxYearToAggregateFor)
+                .Select(x => x.Price)
+                .DefaultIfEmpty(0)
+                .Max();
+            var minPrice = searchDataPoints.Where(x => x.YearValidFor == maxYearToAggregateFor)
+                .Select(x => x.Price)
+                .DefaultIfEmpty(0)
+                .Min();
+
+            if (minPrice is 0 && maxPrice is 0)
+            {
+                maxPrice = searchDataPoints
+                    .Select(x => x.Price)
+                    .DefaultIfEmpty(0)
+                    .Max();
+                minPrice = searchDataPoints
+                    .Select(x => x.Price)
+                    .DefaultIfEmpty(0)
+                    .Min();
+            }
+
+            searchData.StartPrice = minPrice;
+            searchData.EndPrice = maxPrice;
+            searchData.UpdateDate = DateTime.Now;
+        }
+        
+        Console.WriteLine("Calculations complete.");
     }
 
     private async Task InsertSearchData(List<SearchData> searchData)
@@ -163,11 +208,11 @@ public sealed class SearchDataPreparer(
             await transaction.CommitAsync().ConfigureAwait(false);
         }).ConfigureAwait(false);
     }
-    
+
     private class CreateDataPointsModel
     {
         public List<SearchData> SearchData { get; set; }
-        
+
         public List<SearchDataPoint> SearchDataPoints { get; set; }
     }
 }

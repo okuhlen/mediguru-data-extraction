@@ -84,6 +84,11 @@ Next, take a look at the `SearchDataIndexerTask.cs` class (also in the Tasks fol
 # Want to show your support?
 If you would like to show your support, please consider [buying me a coffee](https://www.buymeacoffee.com/okuhlengado) :-)
 
+# Some Frequently Asked Questions
+
+1. Why are there so many GEMS related file processors, and why are some of these re-used? ANSWER: The reason to this is because many of the GEMS files have differing data structures. The initial idea was to create some generic file processor for GEMS, however, doing this made the code complicated to read (perhaps I shouldnt have skipped my 'Gang of Four' design pattern classes).  
+2. Why release the source code for the data extraction tool? ANSWER: I release this code to make my contribution to researchers and other system developers who are studying or building tools which address some aspects of healthcare pricing transparency. From a South African context, there still exist many limitations with this app, which hopefully will be addressed in the near future. In the spirit of 'open science', it made sense for me to share my solution with those who are curious to know.
+
 # How to contribute
 
-If you would like to contribute to this tool, or have some bugs to report, or have questions, please open an issue, or pull request with your changes. Please leave the Karen/Kevin keyboard warrior antics elsewhere; such energy will not be entertained! You may also send me an email/message and I will try my best to respond. Miss me with the Karen/Kevin energy. 
+If you would like to contribute to this tool, or have some bugs to report, or have questions, please open an issue, or pull request with your changes. Please leave the Karen/Kevin keyboard warrior and energy elsewhere! You may also send me a email or message and I will try my best to respond. Miss me with the Karen/Kevin energy. 

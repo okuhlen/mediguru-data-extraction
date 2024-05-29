@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using MediGuru.DataExtractionTool.Models;
 
 namespace MediGuru.DataExtractionTool.DatabaseModels;
 
@@ -35,13 +34,6 @@ public sealed class SearchData
     
     [Required]
     public DateTime UpdateDate { get; set; }
-    
-    /// <summary>
-    /// This field shows the year at which the data point is valid for. We only want to show the latest start and end price.
-    /// IE: do not include 2023, 2022 points here. 
-    /// </summary>
-    [Required]
-    public int YearValidFor { get; set; }
     
     public MedicalAidScheme MedicalAidScheme { get; set; }
 }
